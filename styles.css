@@ -1,17 +1,33 @@
 body {
   font-family: "Consolas", monospace;
-  background: #0a0f1a;
-  color: #e5e7eb;
+  background: #f5f7fb;
+  color: #1f2937;
   margin: 0;
 }
 
-h1 {
-  text-align: center;
-  padding: 15px;
-  background: #020617;
-  border-bottom: 2px solid #1f2937;
+/* HEADER */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: #ffffff;
+  border-bottom: 2px solid #d1d5db;
+  padding: 10px;
 }
 
+.logo {
+  position: absolute;
+  left: 15px;
+  height: 50px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+/* GRID */
 .grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -23,18 +39,13 @@ h1 {
 .mode-selector {
   text-align: center;
   margin: 10px 0;
-  color: #94a3b8;
+  color: #374151;
 }
 
-.mode-selector label {
-  margin: 0 15px;
-  cursor: pointer;
-}
-
-/* Tarjeta */
+/* Tarjetas */
 .tank {
-  background: #020617;
-  border: 2px solid #1f2937;
+  background: #ffffff;
+  border: 2px solid #d1d5db;
   border-radius: 10px;
   padding: 15px;
   display: flex;
@@ -43,7 +54,7 @@ h1 {
 }
 
 .tank h3 {
-  color: #38bdf8;
+  color: #2563eb;
 }
 
 /* Layout */
@@ -61,7 +72,7 @@ h1 {
   flex-direction: column;
   justify-content: space-between;
   font-size: 11px;
-  color: #94a3b8;
+  color: #6b7280;
 }
 
 /* Silo */
@@ -76,7 +87,7 @@ h1 {
 .tank-rect {
   width: 100%;
   height: 200px;
-  border: 2px solid #64748b;
+  border: 2px solid #9ca3af;
   border-bottom: none;
   position: relative;
   overflow: hidden;
@@ -87,7 +98,6 @@ h1 {
   bottom: 0;
   width: 100%;
   height: 0%;
-  background: linear-gradient(180deg, #60a5fa, #1d4ed8);
   transition: height 0.5s ease;
 }
 
@@ -97,7 +107,7 @@ h1 {
   height: 0;
   border-left: 45px solid transparent;
   border-right: 45px solid transparent;
-  border-top: 60px solid #64748b;
+  border-top: 60px solid #9ca3af;
   position: relative;
 }
 
@@ -107,20 +117,11 @@ h1 {
   left: -45px;
   border-left: 45px solid transparent;
   border-right: 45px solid transparent;
-  border-top: 0px solid #3b82f6;
 }
 
-/* Gauge centrado */
-.gauge-container {
-  height: 260px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-
+/* Gauge */
 .gauge-value {
-  color: #22c55e;
+  color: #16a34a;
   font-weight: bold;
 }
 
@@ -131,8 +132,15 @@ h1 {
 }
 
 .value {
-  color: #22c55e;
+  color: #16a34a;
   font-weight: bold;
+}
+
+/* Select */
+.product-select {
+  margin-top: 8px;
+  padding: 4px;
+  border-radius: 5px;
 }
 
 /* Footer */
@@ -140,7 +148,7 @@ h1 {
   text-align: center;
   padding: 10px;
   font-size: 0.8em;
-  color: #64748b;
-  border-top: 1px solid #1f2937;
+  color: #6b7280;
+  border-top: 1px solid #d1d5db;
   margin-top: 10px;
 }
