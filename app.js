@@ -11,6 +11,13 @@ const ratio = (1/3) * (CONE_HEIGHT / CYL_HEIGHT);
 const V_CYL = V_TOTAL / (1 + ratio);
 const V_CONE = V_TOTAL - V_CYL;
 
+// Productos
+const PRODUCTS = {
+  "DL-5": { density: 1300, color: "#2563eb" },
+  "VE-03": { density: 1370, color: "#16a34a" },
+  "ASE": { density: 800, color: "#ea580c" }
+};
+
 let mode = "demo";
 
 // Estado
@@ -19,7 +26,8 @@ for (let i = 1; i <= 8; i++) {
   tanks["tanque" + i] = {
     percent: 0,
     levelMeters: 0,
-    volume: 0
+    volume: 0,
+    product: "DL-5"
   };
 }
 
@@ -42,6 +50,10 @@ function calculateVolume(levelMeters) {
   }
 }
 
+function calculateMassTon(volume, product) {
+  return (volume * PRODUCTS[product].density) / 1000;
+}
+
 function createGauge(percent) {
   const radius = 40;
   const circumference = Math.PI * radius;
@@ -50,19 +62,17 @@ function createGauge(percent) {
   return `
     <svg width="100" height="60">
       <path d="M10 50 A40 40 0 0 1 90 50"
-            stroke="#1f2937"
+            stroke="#d1d5db"
             stroke-width="8"
             fill="none"/>
-
       <path d="M10 50 A40 40 0 0 1 90 50"
-            stroke="#22c55e"
+            stroke="#16a34a"
             stroke-width="8"
             fill="none"
             stroke-dasharray="${circumference}"
             stroke-dashoffset="${circumference - progress}">
       </path>
     </svg>
-
     <div class="gauge-value">${percent.toFixed(1)}%</div>
   `;
 }
@@ -86,6 +96,8 @@ function render() {
       rectFill = ((t.levelMeters - CONE_HEIGHT) / CYL_HEIGHT) * 100;
     }
 
+    const productData = PRODUCTS[t.product];
+
     const div = document.createElement("div");
     div.className = "tank";
 
@@ -93,103 +105,81 @@ function render() {
       <h3>${formatName(id)}</h3>
 
       <div class="tank-wrapper">
-
         <div class="scale">
-          <div>5.92</div>
-          <div>5</div>
-          <div>4</div>
-          <div>3</div>
-          <div>2</div>
-          <div>1</div>
-          <div>0</div>
+          <div>5.92</div><div>5</div><div>4</div><div>3</div><div>2</div><div>1</div><div>0</div>
         </div>
 
         <div class="tank-container">
           <div class="tank-rect">
             <div class="liquid-rect"
-                 style="height:${rectFill}%"></div>
+              style="height:${rectFill}%; background:${productData.color}"></div>
           </div>
 
           <div class="tank-cone">
             <div class="liquid-cone"
-                 style="border-top:${coneFill}px solid #3b82f6"></div>
+              style="border-top:${coneFill}px solid ${productData.color}"></div>
           </div>
         </div>
 
         <div class="gauge-container">
           ${createGauge(t.percent)}
         </div>
-
       </div>
 
       <div class="level-text">
         <div class="value">${t.levelMeters.toFixed(2)} m</div>
         <div class="value">${t.volume.toFixed(0)} m³</div>
+        <div class="value">${calculateMassTon(t.volume, t.product).toFixed(2)} ton</div>
+        <div>Densidad: ${productData.density} kg/m³</div>
       </div>
+
+      <select class="product-select" data-id="${id}">
+        ${Object.keys(PRODUCTS).map(p => `
+          <option value="${p}" ${p === t.product ? "selected" : ""}>${p}</option>
+        `).join("")}
+      </select>
     `;
 
     grid.appendChild(div);
   });
+
+  document.querySelectorAll(".product-select").forEach(select => {
+    select.addEventListener("change", e => {
+      const id = e.target.dataset.id;
+      tanks[id].product = e.target.value;
+      render();
+    });
+  });
 }
-
-// MQTT
-socket.on("nivel", data => {
-
-  if (mode !== "real") return;
-
-  if (tanks[data.tanque]) {
-
-    const distance = parseFloat(data.nivel);
-
-    const level = distanceToLevel(distance);
-    const percent = (level / MAX_HEIGHT) * 100;
-    const volume = calculateVolume(level);
-
-    tanks[data.tanque] = {
-      levelMeters: level,
-      percent,
-      volume
-    };
-
-    render();
-  }
-});
 
 // Simulación
 let simulatedLevels = Array(8).fill(3);
 
 setInterval(() => {
-
   if (mode !== "demo") return;
 
   simulatedLevels = simulatedLevels.map(l => {
     let change = (Math.random() - 0.5) * 0.3;
-    let newLevel = l + change;
-    return Math.max(0, Math.min(MAX_HEIGHT, newLevel));
+    return Math.max(0, Math.min(MAX_HEIGHT, l + change));
   });
 
   simulatedLevels.forEach((lvl, i) => {
-
-    const percent = (lvl / MAX_HEIGHT) * 100;
-    const volume = calculateVolume(lvl);
-
-    tanks["tanque" + (i + 1)] = {
+    const id = "tanque" + (i + 1);
+    tanks[id] = {
+      ...tanks[id],
       levelMeters: lvl,
-      percent,
-      volume
+      percent: (lvl / MAX_HEIGHT) * 100,
+      volume: calculateVolume(lvl)
     };
-
   });
 
   render();
-
 }, 1500);
 
-// Selector modo
+// Modo
 document.querySelectorAll('input[name="mode"]').forEach(radio => {
   radio.addEventListener("change", e => {
     mode = e.target.value;
-    console.log("Modo:", mode);
   });
 });
 
