@@ -1,40 +1,25 @@
 const express = require("express");
 const http = require("http");
-const mqtt = require("mqtt");
 const { Server } = require("socket.io");
+const fs = require("fs");
+const path = require("path");
+const mqtt = require("mqtt");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
+const io = new Server(server);
 
-// ===============================
-// CONFIGURACIÓN MQTT (CLOUD READY)
-// ===============================
-
-const MQTT_URL = process.env.MQTT_URL || "mqtt://localhost:1883";
-
-const client = mqtt.connect(MQTT_URL, {
-  username: process.env.MQTT_USER || undefined,
-  password: process.env.MQTT_PASS || undefined
-});
-
-// ===============================
-// CONEXIÓN MQTT
-// ===============================
+// MQTT
+const client = mqtt.connect("mqtt://localhost:1883");
 
 client.on("connect", () => {
-  console.log("✅ Conectado a MQTT:", MQTT_URL);
-  client.subscribe("estanques/#");
-});
-
-client.on("error", (err) => {
-  console.error("❌ Error MQTT:", err);
+  console.log("MQTT conectado");
+  client.subscribe("silos/nivel/#");
 });
 
 client.on("message", (topic, message) => {
-  const tanque = topic.split("/")[1];
+  const parts = topic.split("/");
+  const tanque = parts[2];
 
   io.emit("nivel", {
     tanque,
@@ -42,14 +27,42 @@ client.on("message", (topic, message) => {
   });
 });
 
-// ===============================
-// SERVIDOR WEB
-// ===============================
+// TURNOS
+const FILE = path.join(__dirname, "turnData.json");
+
+function read() {
+  try { return JSON.parse(fs.readFileSync(FILE)); }
+  catch { return {}; }
+}
+
+function write(d) {
+  fs.writeFileSync(FILE, JSON.stringify(d, null, 2));
+}
+
+function today() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function checkShift(totals) {
+  const h = new Date().getHours();
+  let d = read();
+  let t = today();
+
+  if (!d[t]) d[t] = {};
+
+  if (h >= 8 && !d[t].start) d[t].start = totals;
+  if (h >= 18 && !d[t].end) d[t].end = totals;
+
+  write(d);
+}
+
+io.on("connection", s => {
+  s.on("totals", checkShift);
+  s.on("getTurnData", () => {
+    s.emit("turnData", read()[today()] || {});
+  });
+});
 
 app.use(express.static(__dirname));
 
-const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, "0.0.0.0", () => {
-  console.log("🚀 SCADA corriendo en puerto", PORT);
-});
+server.listen(3000, () => console.log("Servidor 3000"));
