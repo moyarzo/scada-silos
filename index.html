@@ -13,7 +13,25 @@
   <h1>🏭 SISTEMA MONITOREO DE SILOS</h1>
 </div>
 
-<div class="summary" id="summary"></div>
+<!-- 🔥 PANEL SUPERIOR -->
+<div class="top-panel">
+
+  <div class="panel-card">
+    <div id="summary-DL5" class="summary-card"></div>
+    <canvas id="chartDL5"></canvas>
+  </div>
+
+  <div class="panel-card">
+    <div id="summary-VE03" class="summary-card"></div>
+    <canvas id="chartVE03"></canvas>
+  </div>
+
+  <div class="panel-card">
+    <div id="summary-ASE" class="summary-card"></div>
+    <canvas id="chartASE"></canvas>
+  </div>
+
+</div>
 
 <div class="mode-selector">
   <label><input type="radio" name="mode" value="demo" checked> Modo Demo</label>
@@ -27,6 +45,7 @@
 </footer>
 
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="app.js"></script>
 
 </body>
