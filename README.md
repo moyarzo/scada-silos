@@ -44,4 +44,6 @@ pm2 save
 > [!IMPORTANT]
 >SCADA-LB is now running, and can be accessed by pointing a web browser at http://localhost:3000/
 
-SCADA-LB is built using npm and MQTT broker.
+SCADA-LB is built using npm and Mosquitto MQTT broker.
+
+## Testing
