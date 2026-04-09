@@ -36,7 +36,34 @@ for (let i = 1; i <= 8; i++) {
   };
 }
 
-// ===== FUNCIONES =====
+// ===== GAUGE =====
+function createGauge(percent) {
+  const radius = 40;
+  const circumference = Math.PI * radius;
+  const progress = (percent / 100) * circumference;
+
+  return `
+    <svg width="120" height="80">
+      <path d="M10 60 A50 50 0 0 1 110 60"
+        stroke="#e5e7eb" stroke-width="10" fill="none"/>
+
+      <path d="M10 60 A50 50 0 0 1 110 60"
+        stroke="#22c55e" stroke-width="10" fill="none"
+        stroke-dasharray="${circumference}"
+        stroke-dashoffset="${circumference - progress}"
+        style="transition: stroke-dashoffset 0.6s ease;">
+      </path>
+
+      <text x="10" y="75" font-size="10">0%</text>
+      <text x="55" y="20" font-size="10">50%</text>
+      <text x="95" y="75" font-size="10">100%</text>
+    </svg>
+
+    <div class="gauge-value">${percent.toFixed(1)}%</div>
+  `;
+}
+
+// ===== CÁLCULOS =====
 
 function calculateVolume(level) {
   if (level <= CONE_HEIGHT) {
@@ -68,13 +95,26 @@ function initCharts() {
           label: p,
           data: [],
           borderColor: PRODUCTS[p].color,
-          backgroundColor: PRODUCTS[p].color + "33",
+          backgroundColor: PRODUCTS[p].color + "22",
           fill: true,
-          tension: 0.3
+          tension: 0.4,
+          pointRadius: 0,
+          borderWidth: 2
         }]
       },
       options: {
         animation: false,
+        plugins: {
+          legend: { display: false },
+          zoom: {
+            pan: { enabled: true, mode: "x" },
+            zoom: {
+              wheel: { enabled: true },
+              pinch: { enabled: true },
+              mode: "x"
+            }
+          }
+        },
         scales: {
           x: { title: { display: true, text: "Hora" } },
           y: { title: { display: true, text: "Ton" } }
@@ -84,22 +124,36 @@ function initCharts() {
   });
 }
 
+// ===== HISTÓRICO INDUSTRIAL =====
+
 function updateHistory(totals) {
-  const hour = new Date().getHours() + ":00";
+
+  const now = new Date();
+  const minutes = now.getMinutes();
+  const roundedMinutes = minutes < 30 ? "00" : "30";
+  const label = now.getHours().toString().padStart(2, "0") + ":" + roundedMinutes;
 
   Object.keys(totals).forEach(p => {
-    if (Math.abs(totals[p] - lastTotals[p]) > 0.1) {
 
-      const last = history[p].slice(-1)[0];
+    const currentValue = totals[p];
+    const lastEntry = history[p].slice(-1)[0];
 
-      if (!last || last.time !== hour) {
-        history[p].push({ time: hour, value: totals[p] });
-      } else {
-        last.value = totals[p];
-      }
-
-      lastTotals[p] = totals[p];
+    if (!lastEntry) {
+      history[p].push({ time: label, value: currentValue });
+      lastTotals[p] = currentValue;
+      return;
     }
+
+    if (lastEntry.time !== label) {
+      history[p].push({
+        time: label,
+        value: lastTotals[p]
+      });
+    } else {
+      lastEntry.value = currentValue;
+    }
+
+    lastTotals[p] = currentValue;
   });
 }
 
@@ -163,6 +217,7 @@ function render() {
       <h3>Silo ${id.replace("tanque","")}</h3>
 
       <div class="tank-wrapper">
+
         <div class="scale">
           <div>5.9</div><div>5</div><div>4</div><div>3</div>
           <div>2</div><div>1</div><div>0</div>
@@ -176,6 +231,11 @@ function render() {
             <div class="liquid-cone" style="border-top:${percent*0.6}px solid ${product.color}"></div>
           </div>
         </div>
+
+        <div class="gauge-container">
+          ${createGauge(percent)}
+        </div>
+
       </div>
 
       <div>
