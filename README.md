@@ -1,13 +1,14 @@
 # SCADA-LB
 
-SCADA-LB is a project developed to visualize bulk product level data in industrial storage silos. Radar sensors installed in each silo were used to measure the level, communicating via the Modbus protocol with an HMI screen. The HMI screen is capable of publishing messages to an MQTT broker.
+SCADA-LB is a project developed to visualize bulk product level data in industrial storage silos. Radar sensors installed in each silo were used to measure the level, communicating via the Modbus protocol with an HMI screen. The HMI screen is capable of publishing messages to an MQTT broker. The developed dashboard displays operational data from the silos, such as mass calculations, consumption records, among others, and also allows changing the product in the silos.
 
 
-<img width="1904" height="920" alt="image" src="https://github.com/user-attachments/assets/c1c06395-f542-4b78-9d03-b2ca7f4221ad" />
+<img width="1911" height="733" alt="image" src="https://github.com/user-attachments/assets/717d55e9-9789-448c-a831-f848410a4abf" />
 
 
 
-## Building and Running SCADA-LB Locally
+
+## Building and running locally
 Building and running SCADA-LB in your local dev environment is very easy. Be sure you have npm, Git, Node.js, and Eclipse Mosquitto installed, then follow the directions below.
 
 1. Clone the source code:
@@ -46,3 +47,5 @@ pm2 save
 
 
 ## Testing
+
+The dashboard includes a switch for demo mode and another for live mode. In demo mode, you can test the functions with random data. In live mode, it reads data from the MQTT broker.
