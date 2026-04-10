@@ -9,7 +9,7 @@ SCADA-LB is a project developed to visualize bulk product level data in industri
 
 
 ## Building and running locally
-Building and running SCADA-LB in your local dev environment is very easy. Be sure you have npm, Git, Node.js, and Eclipse Mosquitto installed, then follow the directions below.
+Building and running SCADA-LB in your local dev environment is very easy. Be sure you have [npm](http://npmjs.com/), [Git](https://git-scm.com/downloads), [Node.js](https://nodejs.org/), and [Eclipse Mosquitto](https://mosquitto.org/) installed, then follow the directions below.
 
 1. Clone the source code:
 ```sh
@@ -49,3 +49,4 @@ pm2 save
 ## Testing
 
 The dashboard includes a switch for demo mode and another for live mode. In demo mode, you can test the functions with random data. In live mode, it reads data from the MQTT broker.
+
