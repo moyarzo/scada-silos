@@ -1,6 +1,6 @@
 # SCADA-LB
 
-SCADA-LB is a project developed to visualize bulk product level data in industrial storage silos. Radar sensors installed in each silo were used to measure the level, communicating via the Modbus protocol with an HMI screen. The HMI screen is capable of publishing messages to an MQTT broker. The developed dashboard displays operational data from the silos, such as mass calculations, consumption records, among others, and also allows changing the product in the silos.
+SCADA-LB is a project developed to visualize bulk product level data in industrial storage silos. Radar sensors installed in each silo were used to measure the level, communicating via the Modbus protocol with an HMI screen. The HMI screen is capable of publishing messages to an MQTT broker. The developed dashboard displays operational data from the silos, such as mass calculations, consumption records, alarms, among others, and also allows changing the product in the silos.
 
 
 <img width="1911" height="733" alt="image" src="https://github.com/user-attachments/assets/717d55e9-9789-448c-a831-f848410a4abf" />
