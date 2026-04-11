@@ -1,6 +1,6 @@
 const express = require("express");
 const http = require("http");
-const { Server } = require("socket.io");
+const Server = require("socket.io").Server;
 const fs = require("fs");
 const path = require("path");
 const mqtt = require("mqtt");
@@ -73,7 +73,7 @@ function readJson(filePath, fallback) {
   try {
     ensureJsonFile(filePath, fallback);
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
+  } catch (error) {
     return fallback;
   }
 }
@@ -83,14 +83,19 @@ function writeJson(filePath, data) {
 }
 
 function getSiloProducts() {
-  const cfg = readJson(CONFIG_FILE, DEFAULT_SILO_PRODUCTS);
-  const merged = { ...DEFAULT_SILO_PRODUCTS };
+  var cfg = readJson(CONFIG_FILE, DEFAULT_SILO_PRODUCTS);
+  var merged = {};
+  var tanque;
 
-  Object.keys(cfg).forEach((tanque) => {
+  for (tanque in DEFAULT_SILO_PRODUCTS) {
+    merged[tanque] = DEFAULT_SILO_PRODUCTS[tanque];
+  }
+
+  for (tanque in cfg) {
     if (merged[tanque] && PRODUCTS[cfg[tanque]]) {
       merged[tanque] = cfg[tanque];
     }
-  });
+  }
 
   return merged;
 }
@@ -99,13 +104,13 @@ function setSiloProduct(tanque, product) {
   if (!DEFAULT_SILO_PRODUCTS[tanque]) return;
   if (!PRODUCTS[product]) return;
 
-  const cfg = getSiloProducts();
+  var cfg = getSiloProducts();
   cfg[tanque] = product;
   writeJson(CONFIG_FILE, cfg);
 }
 
 function calculateVolume(level) {
-  const safeLevel = Math.max(0, Math.min(MAX_HEIGHT, level));
+  var safeLevel = Math.max(0, Math.min(MAX_HEIGHT, level));
 
   if (safeLevel <= CONE_HEIGHT) {
     return V_CONE * Math.pow(safeLevel / CONE_HEIGHT, 3);
@@ -115,16 +120,17 @@ function calculateVolume(level) {
 }
 
 function getCurrentTotalsFromBackend() {
-  const totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
-  const siloProducts = getSiloProducts();
+  var totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
+  var siloProducts = getSiloProducts();
+  var tanque, product, volume, density, ton;
 
-  Object.keys(latestSilos).forEach((tanque) => {
-    const product = siloProducts[tanque];
-    const volume = latestSilos[tanque].volume || 0;
-    const density = PRODUCTS[product].density;
-    const ton = (volume * density) / 1000;
+  for (tanque in latestSilos) {
+    product = siloProducts[tanque];
+    volume = latestSilos[tanque].volume || 0;
+    density = PRODUCTS[product].density;
+    ton = (volume * density) / 1000;
     totals[product] += ton;
-  });
+  }
 
   return totals;
 }
@@ -133,18 +139,19 @@ function today() {
   return new Date().toISOString().split("T")[0];
 }
 
-function formatDateYYYYMMDD(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}${m}${d}`;
+function formatDateYYYYMMDD(dateObj) {
+  var date = dateObj || new Date();
+  var y = date.getFullYear();
+  var m = String(date.getMonth() + 1).padStart(2, "0");
+  var d = String(date.getDate()).padStart(2, "0");
+  return "" + y + m + d;
 }
 
 function getRounded5MinLabel() {
-  const now = new Date();
-  const minutes = now.getMinutes();
-  const rounded = Math.floor(minutes / 5) * 5;
-  return `${String(now.getHours()).padStart(2, "0")}:${String(rounded).padStart(2, "0")}`;
+  var now = new Date();
+  var minutes = now.getMinutes();
+  var rounded = Math.floor(minutes / 5) * 5;
+  return String(now.getHours()).padStart(2, "0") + ":" + String(rounded).padStart(2, "0");
 }
 
 function getDefaultHistoryDay() {
@@ -156,18 +163,19 @@ function getDefaultHistoryDay() {
 }
 
 function updatePersistentHistory() {
-  const allHistory = readJson(HISTORY_FILE, {});
-  const day = today();
-  const label = getRounded5MinLabel();
-  const totals = getCurrentTotalsFromBackend();
+  var allHistory = readJson(HISTORY_FILE, {});
+  var day = today();
+  var label = getRounded5MinLabel();
+  var totals = getCurrentTotalsFromBackend();
+  var product, arr, lastEntry;
 
   if (!allHistory[day]) {
     allHistory[day] = getDefaultHistoryDay();
   }
 
-  Object.keys(totals).forEach((product) => {
-    const arr = allHistory[day][product] || [];
-    const lastEntry = arr[arr.length - 1];
+  for (product in totals) {
+    arr = allHistory[day][product] || [];
+    lastEntry = arr[arr.length - 1];
 
     if (!lastEntry) {
       arr.push({ time: label, value: totals[product] });
@@ -178,22 +186,22 @@ function updatePersistentHistory() {
     }
 
     allHistory[day][product] = arr;
-  });
+  }
 
   writeJson(HISTORY_FILE, allHistory);
   io.emit("historyData", getTodayHistory());
 }
 
 function getTodayHistory() {
-  const allHistory = readJson(HISTORY_FILE, {});
+  var allHistory = readJson(HISTORY_FILE, {});
   return allHistory[today()] || getDefaultHistoryDay();
 }
 
 function checkShift() {
-  const h = new Date().getHours();
-  const d = readJson(TURN_FILE, {});
-  const t = today();
-  const totals = getCurrentTotalsFromBackend();
+  var h = new Date().getHours();
+  var d = readJson(TURN_FILE, {});
+  var t = today();
+  var totals = getCurrentTotalsFromBackend();
 
   if (!d[t]) d[t] = {};
 
@@ -205,13 +213,13 @@ function checkShift() {
 }
 
 function getTodayTurnData() {
-  const data = readJson(TURN_FILE, {});
+  var data = readJson(TURN_FILE, {});
   return data[today()] || {};
 }
 
 function createMailTransporter() {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
+  var user = process.env.GMAIL_USER;
+  var pass = process.env.GMAIL_APP_PASSWORD;
 
   if (!user || !pass) {
     throw new Error("Faltan variables de entorno GMAIL_USER o GMAIL_APP_PASSWORD");
@@ -220,8 +228,8 @@ function createMailTransporter() {
   return nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user,
-      pass
+      user: user,
+      pass: pass
     }
   });
 }
@@ -231,17 +239,18 @@ async function buildExportExcel() {
     throw new Error("No se encontró template.xlsx en la carpeta del proyecto");
   }
 
-  const workbook = new ExcelJS.Workbook();
+  var workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(TEMPLATE_FILE);
 
-  const sheet = workbook.getWorksheet("Hoja1");
+  var sheet = workbook.getWorksheet("Hoja1");
   if (!sheet) {
     throw new Error('No se encontró la hoja "Hoja1" en template.xlsx');
   }
 
-  const totals = getCurrentTotalsFromBackend();
-  const turn = getTodayTurnData();
-  const siloProducts = getSiloProducts();
+  var totals = getCurrentTotalsFromBackend();
+  var turn = getTodayTurnData();
+  var siloProducts = getSiloProducts();
+  var i, row, tanque, product, volume, massTon;
 
   // Totalizador
   sheet.getCell("C4").value = Number(totals["DL-5"].toFixed(1));
@@ -249,37 +258,37 @@ async function buildExportExcel() {
   sheet.getCell("E4").value = Number(totals["VE-03"].toFixed(1));
 
   // Registro turno
-  sheet.getCell("C9").value = turn.start?.["DL-5"] != null ? Number(turn.start["DL-5"].toFixed(1)) : "";
-  sheet.getCell("D9").value = turn.start?.["ASE"] != null ? Number(turn.start["ASE"].toFixed(1)) : "";
-  sheet.getCell("E9").value = turn.start?.["VE-03"] != null ? Number(turn.start["VE-03"].toFixed(1)) : "";
+  sheet.getCell("C9").value = (turn.start && turn.start["DL-5"] != null) ? Number(turn.start["DL-5"].toFixed(1)) : "";
+  sheet.getCell("D9").value = (turn.start && turn.start["ASE"] != null) ? Number(turn.start["ASE"].toFixed(1)) : "";
+  sheet.getCell("E9").value = (turn.start && turn.start["VE-03"] != null) ? Number(turn.start["VE-03"].toFixed(1)) : "";
 
-  sheet.getCell("C10").value = turn.end?.["DL-5"] != null ? Number(turn.end["DL-5"].toFixed(1)) : "";
-  sheet.getCell("D10").value = turn.end?.["ASE"] != null ? Number(turn.end["ASE"].toFixed(1)) : "";
-  sheet.getCell("E10").value = turn.end?.["VE-03"] != null ? Number(turn.end["VE-03"].toFixed(1)) : "";
+  sheet.getCell("C10").value = (turn.end && turn.end["DL-5"] != null) ? Number(turn.end["DL-5"].toFixed(1)) : "";
+  sheet.getCell("D10").value = (turn.end && turn.end["ASE"] != null) ? Number(turn.end["ASE"].toFixed(1)) : "";
+  sheet.getCell("E10").value = (turn.end && turn.end["VE-03"] != null) ? Number(turn.end["VE-03"].toFixed(1)) : "";
 
   // Almacenamiento por silo
-  for (let i = 1; i <= 8; i++) {
-    const row = 14 + i; // 15..22
-    const tanque = `tanque${i}`;
-    const product = siloProducts[tanque];
-    const volume = latestSilos[tanque]?.volume || 0;
-    const massTon = (volume * PRODUCTS[product].density) / 1000;
+  for (i = 1; i <= 8; i++) {
+    row = 14 + i; // 15..22
+    tanque = "tanque" + i;
+    product = siloProducts[tanque];
+    volume = latestSilos[tanque] ? latestSilos[tanque].volume || 0 : 0;
+    massTon = (volume * PRODUCTS[product].density) / 1000;
 
-    sheet.getCell(`C${row}`).value = product;
-    sheet.getCell(`D${row}`).value = Number(massTon.toFixed(2));
+    sheet.getCell("C" + row).value = product;
+    sheet.getCell("D" + row).value = Number(massTon.toFixed(2));
   }
 
-  const fileName = `stock_diario_${formatDateYYYYMMDD()}.xlsx`;
-  const filePath = path.join(EXPORTS_DIR, fileName);
+  var fileName = "stock_diario_" + formatDateYYYYMMDD() + ".xlsx";
+  var filePath = path.join(EXPORTS_DIR, fileName);
 
   await workbook.xlsx.writeFile(filePath);
 
-  return { fileName, filePath };
+  return { fileName: fileName, filePath: filePath };
 }
 
 async function sendExportEmail() {
-  const transporter = createMailTransporter();
-  const { fileName, filePath } = await buildExportExcel();
+  var transporter = createMailTransporter();
+  var exportFile = await buildExportExcel();
 
   await transporter.sendMail({
     from: process.env.GMAIL_USER,
@@ -288,43 +297,43 @@ async function sendExportEmail() {
     text: EMAIL_BODY,
     attachments: [
       {
-        filename: fileName,
-        path: filePath
+        filename: exportFile.fileName,
+        path: exportFile.filePath
       }
     ]
   });
 
-  return { fileName };
+  return { fileName: exportFile.fileName };
 }
 
 // MQTT
-const client = mqtt.connect("mqtt://localhost:1883");
+var client = mqtt.connect("mqtt://localhost:1883");
 
-client.on("connect", () => {
+client.on("connect", function () {
   console.log("MQTT conectado");
   client.subscribe("silos/nivel/#");
 });
 
-client.on("message", (topic, message) => {
+client.on("message", function (topic, message) {
   try {
-    const parts = topic.split("/");
-    const tanque = parts[2];
-    const distance = parseFloat(message.toString());
+    var parts = topic.split("/");
+    var tanque = parts[2];
+    var distance = parseFloat(message.toString());
 
     if (!latestSilos[tanque] || Number.isNaN(distance)) return;
 
-    const level = Math.max(0, Math.min(MAX_HEIGHT, MAX_HEIGHT - distance));
-    const volume = calculateVolume(level);
-    const percent = (level / MAX_HEIGHT) * 100;
+    var level = Math.max(0, Math.min(MAX_HEIGHT, MAX_HEIGHT - distance));
+    var volume = calculateVolume(level);
+    var percent = (level / MAX_HEIGHT) * 100;
 
     latestSilos[tanque] = {
       levelMeters: level,
-      volume,
-      percent
+      volume: volume,
+      percent: percent
     };
 
     io.emit("nivel", {
-      tanque,
+      tanque: tanque,
       nivel: message.toString()
     });
   } catch (error) {
@@ -337,30 +346,31 @@ setInterval(checkShift, 60000);
 setInterval(updatePersistentHistory, 60000);
 
 // SOCKET
-io.on("connection", (socket) => {
-  socket.on("getTurnData", () => {
-    const data = readJson(TURN_FILE, {});
+io.on("connection", function (socket) {
+  socket.on("getTurnData", function () {
+    var data = readJson(TURN_FILE, {});
     socket.emit("turnData", data[today()] || {});
   });
 
-  socket.on("getSiloConfig", () => {
+  socket.on("getSiloConfig", function () {
     socket.emit("siloConfig", getSiloProducts());
   });
 
-  socket.on("setSiloProduct", ({ tanque, product }) => {
-    setSiloProduct(tanque, product);
+  socket.on("setSiloProduct", function (payload) {
+    if (!payload) return;
+    setSiloProduct(payload.tanque, payload.product);
     io.emit("siloConfig", getSiloProducts());
   });
 
-  socket.on("getHistoryData", () => {
+  socket.on("getHistoryData", function () {
     socket.emit("historyData", getTodayHistory());
   });
 
-  socket.on("getSiloState", () => {
+  socket.on("getSiloState", function () {
     socket.emit("siloState", latestSilos);
   });
 
-  socket.on("exportData", async () => {
+  socket.on("exportData", async function () {
     try {
       await sendExportEmail();
       socket.emit("exportResult", { ok: true });
@@ -376,6 +386,6 @@ io.on("connection", (socket) => {
 
 app.use(express.static(__dirname));
 
-server.listen(3000, () => {
+server.listen(3000, function () {
   console.log("Servidor 3000");
 });
