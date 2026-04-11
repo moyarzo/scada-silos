@@ -1,7 +1,8 @@
 body {
   font-family: "Consolas", monospace;
-  background: #f5f7fb;
+  background: #e5e7eb;
   margin: 0;
+  color: #1f2937;
 }
 
 .header {
@@ -9,8 +10,8 @@ body {
   justify-content: center;
   align-items: center;
   position: relative;
-  background: white;
-  border-bottom: 2px solid #ddd;
+  background: #f3f4f6;
+  border-bottom: 2px solid #d1d5db;
   padding: 10px;
 }
 
@@ -20,19 +21,22 @@ body {
   height: 50px;
 }
 
-/* PANEL SUPERIOR */
+.header h1 {
+  margin: 0;
+  font-size: 30px;
+}
+
 .top-panel {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 15px;
   padding: 10px;
 }
 
 .panel-card {
-  background: white;
+  background: #f9fafb;
   border-radius: 10px;
   padding: 10px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .summary-card {
@@ -42,37 +46,110 @@ body {
   text-align: center;
   margin-bottom: 10px;
   font-weight: bold;
+  font-size: 17px;
+  line-height: 1.5;
 }
 
 canvas {
   width: 100% !important;
-  height: 220px !important;
+  height: 240px !important;
+  background: #ffffff;
+  border-radius: 8px;
 }
 
 .mode-selector {
   text-align: center;
   margin: 15px 0;
+  font-size: 18px;
+}
+
+.mode-selector label {
+  margin: 0 14px;
+  cursor: pointer;
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  padding: 20px;
+  gap: 14px;
+  padding: 16px;
 }
 
 .tank {
-  background: white;
-  border: 1px solid #ccc;
-  padding: 10px;
+  background: #f9fafb;
+  border: 1px solid #cbd5e1;
+  padding: 8px;
   text-align: center;
+  border-radius: 10px;
+  transition: background 0.3s ease, box-shadow 0.3s ease, border 0.3s ease;
+}
+
+.tank h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 20px;
+  color: #1d4ed8;
+}
+
+.tank.warning {
+  background: #fef9c3;
+  border: 2px solid #fde047;
+}
+
+.tank.warning h3 {
+  color: #ca8a04;
+}
+
+.tank.alert-high {
+  border: 2px solid #fca5a5;
+  animation: blinkAlert 1.2s infinite;
+}
+
+.tank.alert-high h3 {
+  color: #dc2626;
+}
+
+@keyframes blinkAlert {
+  0% {
+    background: #f9fafb;
+    box-shadow: 0 0 0 rgba(239, 68, 68, 0);
+  }
+  50% {
+    background: #fee2e2;
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.28);
+  }
+  100% {
+    background: #f9fafb;
+    box-shadow: 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.tank-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.tank-left-data {
+  min-width: 95px;
+  text-align: right;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.tank-left-data .tank-mass {
+  font-size: 22px;
+  font-weight: bold;
+  color: #0f172a;
 }
 
 .tank-wrapper {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  gap: 15px;
+  gap: 10px;
 }
 
 .scale {
@@ -80,24 +157,33 @@ canvas {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12px;
+  color: #475569;
 }
 
 .tank-container {
   width: 90px;
   height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .tank-rect {
+  width: 100%;
   height: 200px;
-  border: 2px solid #999;
+  border: 2px solid #94a3b8;
+  border-bottom: none;
   position: relative;
+  overflow: hidden;
+  background: #ffffff;
 }
 
 .liquid-rect {
   position: absolute;
   bottom: 0;
   width: 100%;
+  transition: height 0.6s ease;
 }
 
 .tank-cone {
@@ -105,7 +191,7 @@ canvas {
   height: 0;
   border-left: 45px solid transparent;
   border-right: 45px solid transparent;
-  border-top: 60px solid #999;
+  border-top: 60px solid #94a3b8;
   position: relative;
 }
 
@@ -115,6 +201,7 @@ canvas {
   left: -45px;
   border-left: 45px solid transparent;
   border-right: 45px solid transparent;
+  transition: border-top 0.6s ease;
 }
 
 .gauge-container {
@@ -123,17 +210,29 @@ canvas {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  min-width: 120px;
+  min-width: 135px;
 }
 
 .gauge-value {
-  color: #16a34a;
   font-weight: bold;
+  font-size: 24px;
+  margin-top: 6px;
+}
+
+.product-select {
+  margin-top: 8px;
+  padding: 6px 8px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #94a3b8;
+  background: #ffffff;
 }
 
 .footer {
   text-align: center;
   padding: 10px;
   color: #6b7280;
-  border-top: 1px solid #ccc;
+  border-top: 1px solid #cbd5e1;
+  margin-top: 10px;
+  font-size: 16px;
 }
