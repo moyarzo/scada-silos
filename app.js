@@ -4,7 +4,7 @@ const socket = io();
 const CONE_HEIGHT = 1.67;
 const CYL_HEIGHT = 4.25;
 const MAX_HEIGHT = CONE_HEIGHT + CYL_HEIGHT;
-const V_TOTAL = 46.168; // m³
+const V_TOTAL = 46.168;
 
 const PRODUCT_ORDER = ["DL-5", "VE-03", "ASE"];
 
@@ -12,7 +12,6 @@ const ratio = (1 / 3) * (CONE_HEIGHT / CYL_HEIGHT);
 const V_CYL = V_TOTAL / (1 + ratio);
 const V_CONE = V_TOTAL - V_CYL;
 
-// PRODUCTOS
 const PRODUCTS = {
   "DL-5": { density: 1300, color: "#2563eb" },
   "VE-03": { density: 1370, color: "#16a34a" },
@@ -372,6 +371,15 @@ function updateDemoHistory() {
   });
 }
 
+function exportData() {
+  if (!confirm("¿Está seguro de enviar la información?")) return;
+
+  const btn = document.getElementById("exportBtn");
+  if (btn) btn.disabled = true;
+
+  socket.emit("exportData");
+}
+
 function render() {
   const viewTanks = getViewTanks();
   const grid = document.getElementById("grid");
@@ -535,6 +543,17 @@ socket.on("historyData", (backendHistory) => {
   if (mode === "real") render();
 });
 
+socket.on("exportResult", (result) => {
+  const btn = document.getElementById("exportBtn");
+  if (btn) btn.disabled = false;
+
+  if (result?.ok) {
+    alert("La información ha sido enviada");
+  } else {
+    alert(`No fue posible enviar la información: ${result?.error || "Error desconocido"}`);
+  }
+});
+
 function requestRealData() {
   socket.emit("getTurnData");
   socket.emit("getSiloConfig");
@@ -570,6 +589,8 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     render();
   });
 });
+
+document.getElementById("exportBtn").addEventListener("click", exportData);
 
 requestRealData();
 renderTopPanel();
