@@ -162,6 +162,7 @@ function updatePersistentHistory() {
   });
 
   writeJson(HISTORY_FILE, allHistory);
+  io.emit("historyData", getTodayHistory());
 }
 
 function getTodayHistory() {
@@ -181,6 +182,7 @@ function checkShift() {
   if (h >= 19 && !d[t].end) d[t].end = totals;
 
   writeJson(TURN_FILE, d);
+  io.emit("turnData", d[t] || {});
 }
 
 // MQTT
