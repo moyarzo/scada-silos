@@ -8,7 +8,6 @@ const V_TOTAL = 46.168; // m³
 
 const PRODUCT_ORDER = ["DL-5", "VE-03", "ASE"];
 
-// GEOMETRÍA VOLUMEN
 const ratio = (1 / 3) * (CONE_HEIGHT / CYL_HEIGHT);
 const V_CYL = V_TOTAL / (1 + ratio);
 const V_CONE = V_TOTAL - V_CYL;
@@ -22,49 +21,97 @@ const PRODUCTS = {
 
 let mode = "demo";
 let turnData = {};
+let lastMqttUpdate = null;
 
-let history = {
+let charts = {};
+
+let historyReal = {
   "DL-5": [],
   "VE-03": [],
   "ASE": []
 };
 
-let charts = {};
+let historyDemo = {
+  "DL-5": [],
+  "VE-03": [],
+  "ASE": []
+};
 
-const tanks = {};
+const realTanks = {};
+const demoTanks = {};
+
 for (let i = 1; i <= 8; i++) {
   const id = "tanque" + i;
-  tanks[id] = {
+  const defaultProduct = i === 6 ? "ASE" : "DL-5";
+
+  realTanks[id] = {
     levelMeters: 0,
     volume: 0,
     percent: 0,
-    product: i === 6 ? "ASE" : "DL-5"
+    product: defaultProduct
   };
+
+  demoTanks[id] = {
+    levelMeters: 0,
+    volume: 0,
+    percent: 0,
+    product: defaultProduct
+  };
+}
+
+function calculateVolume(level) {
+  const safeLevel = Math.max(0, Math.min(MAX_HEIGHT, level));
+
+  if (safeLevel <= CONE_HEIGHT) {
+    return V_CONE * Math.pow(safeLevel / CONE_HEIGHT, 3);
+  }
+
+  return V_CONE + V_CYL * ((safeLevel - CONE_HEIGHT) / CYL_HEIGHT);
+}
+
+function calculateMassTon(volume, product) {
+  return (volume * PRODUCTS[product].density) / 1000;
+}
+
+function getRounded5MinLabel() {
+  const now = new Date();
+  const minutes = now.getMinutes();
+  const rounded = Math.floor(minutes / 5) * 5;
+  return `${String(now.getHours()).padStart(2, "0")}:${String(rounded).padStart(2, "0")}`;
 }
 
 function getActiveProducts() {
   const active = new Set();
-  Object.values(tanks).forEach(t => {
+  Object.values(realTanks).forEach(t => {
     if (t.product) active.add(t.product);
   });
   return PRODUCT_ORDER.filter(product => active.has(product));
 }
 
-function renderTopPanel() {
-  const topPanel = document.getElementById("topPanel");
-  const activeProducts = getActiveProducts();
+function getViewTanks() {
+  return mode === "real" ? realTanks : demoTanks;
+}
 
-  topPanel.style.gridTemplateColumns = `repeat(${activeProducts.length || 1}, 1fr)`;
+function getViewHistory() {
+  return mode === "real" ? historyReal : historyDemo;
+}
 
-  topPanel.innerHTML = activeProducts.map(product => {
-    const safeId = product.replace(/[^a-zA-Z0-9]/g, "");
-    return `
-      <div class="panel-card">
-        <div id="summary-${safeId}" class="summary-card"></div>
-        <canvas id="chart-${safeId}"></canvas>
-      </div>
-    `;
-  }).join("");
+function setProductAllModes(tanque, product) {
+  if (!realTanks[tanque] || !demoTanks[tanque] || !PRODUCTS[product]) return;
+  realTanks[tanque].product = product;
+  demoTanks[tanque].product = product;
+}
+
+function updateMqttStatus() {
+  const el = document.getElementById("mqttStatus");
+  if (!el) return;
+
+  if (!lastMqttUpdate) {
+    el.textContent = "Última actualización MQTT: --";
+    return;
+  }
+
+  el.textContent = `Última actualización MQTT: ${lastMqttUpdate}`;
 }
 
 function createGauge(percent, color) {
@@ -89,7 +136,7 @@ function createGauge(percent, color) {
       </path>
 
       <text x="18" y="92" font-size="12">0%</text>
-      <text x="67" y="20" font-size="12">50%</text>
+      <text x="75" y="62" font-size="12" text-anchor="middle">50%</text>
       <text x="112" y="92" font-size="12">100%</text>
     </svg>
 
@@ -97,8 +144,21 @@ function createGauge(percent, color) {
   `;
 }
 
-function calculateMassTon(volume, product) {
-  return (volume * PRODUCTS[product].density) / 1000;
+function renderTopPanel() {
+  const topPanel = document.getElementById("topPanel");
+  const activeProducts = getActiveProducts();
+
+  topPanel.style.gridTemplateColumns = `repeat(${activeProducts.length || 1}, 1fr)`;
+
+  topPanel.innerHTML = activeProducts.map(product => {
+    const safeId = product.replace(/[^a-zA-Z0-9]/g, "");
+    return `
+      <div class="panel-card">
+        <div id="summary-${safeId}" class="summary-card"></div>
+        <canvas id="chart-${safeId}"></canvas>
+      </div>
+    `;
+  }).join("");
 }
 
 const trendMarkerPlugin = {
@@ -241,17 +301,20 @@ function initCharts() {
 }
 
 function updateCharts() {
+  const sourceHistory = getViewHistory();
+
   Object.keys(charts).forEach((product) => {
-    charts[product].data.labels = history[product].map(h => h.time);
-    charts[product].data.datasets[0].data = history[product].map(h => h.value);
+    charts[product].data.labels = sourceHistory[product].map(h => h.time);
+    charts[product].data.datasets[0].data = sourceHistory[product].map(h => h.value);
     charts[product].update();
   });
 }
 
 function renderSummary() {
+  const viewTanks = getViewTanks();
   let totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
 
-  Object.values(tanks).forEach((t) => {
+  Object.values(viewTanks).forEach((t) => {
     totals[t.product] += calculateMassTon(t.volume, t.product);
   });
 
@@ -263,14 +326,23 @@ function renderSummary() {
     const el = document.getElementById(`summary-${safeId}`);
     if (!el) return;
 
-    el.innerHTML = `
-      <div style="background:${PRODUCTS[product].color}; padding:8px; border-radius:8px;">
-        ${product}<br>
-        <strong>Totalizador:</strong> ${totals[product].toFixed(1)} ton<br>
-        07: ${start[product]?.toFixed(1) || "-"} |
-        19: ${end[product]?.toFixed(1) || "-"}
-      </div>
-    `;
+    if (mode === "real") {
+      el.innerHTML = `
+        <div style="background:${PRODUCTS[product].color}; padding:8px; border-radius:8px;">
+          ${product}<br>
+          <strong>Totalizador:</strong> ${totals[product].toFixed(1)} ton<br>
+          <strong>Registro turno:</strong> 07: ${start[product]?.toFixed(1) || "-"} | 19: ${end[product]?.toFixed(1) || "-"}
+        </div>
+      `;
+    } else {
+      el.innerHTML = `
+        <div style="background:${PRODUCTS[product].color}; padding:8px; border-radius:8px;">
+          ${product}<br>
+          <strong>Totalizador:</strong> ${totals[product].toFixed(1)} ton<br>
+          <strong>Modo:</strong> Demo
+        </div>
+      `;
+    }
   });
 }
 
@@ -278,12 +350,35 @@ function saveSiloProductConfig(id, product) {
   socket.emit("setSiloProduct", { tanque: id, product });
 }
 
+function updateDemoHistory() {
+  const label = getRounded5MinLabel();
+  const totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
+
+  Object.values(demoTanks).forEach((t) => {
+    totals[t.product] += calculateMassTon(t.volume, t.product);
+  });
+
+  Object.keys(totals).forEach((product) => {
+    const arr = historyDemo[product];
+    const lastEntry = arr[arr.length - 1];
+
+    if (!lastEntry) {
+      arr.push({ time: label, value: totals[product] });
+    } else if (lastEntry.time !== label) {
+      arr.push({ time: label, value: totals[product] });
+    } else {
+      lastEntry.value = totals[product];
+    }
+  });
+}
+
 function render() {
+  const viewTanks = getViewTanks();
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
 
-  Object.keys(tanks).forEach((id) => {
-    const t = tanks[id];
+  Object.keys(viewTanks).forEach((id) => {
+    const t = viewTanks[id];
     const product = PRODUCTS[t.product];
     const percent = Math.max(0, Math.min(100, t.percent || 0));
 
@@ -361,125 +456,123 @@ function render() {
   document.querySelectorAll(".product-select").forEach((select) => {
     select.addEventListener("change", (e) => {
       const id = e.target.dataset.id;
-      tanks[id].product = e.target.value;
-      saveSiloProductConfig(id, e.target.value);
+      const product = e.target.value;
+      setProductAllModes(id, product);
+      saveSiloProductConfig(id, product);
       render();
     });
   });
 
-  const activeProductsNow = getActiveProducts().join("|");
-  if (render.lastActiveProducts !== activeProductsNow) {
-    render.lastActiveProducts = activeProductsNow;
+  const chartKey = `${mode}|${getActiveProducts().join("|")}`;
+  if (render.lastChartKey !== chartKey) {
+    render.lastChartKey = chartKey;
     renderTopPanel();
     initCharts();
   }
 
   updateCharts();
   renderSummary();
+  updateMqttStatus();
 }
 
+// REAL MQTT EN PARALELO
 socket.on("nivel", (data) => {
-  if (mode !== "real") return;
-  if (!tanks[data.tanque]) return;
+  if (!realTanks[data.tanque]) return;
 
   const distance = parseFloat(data.nivel);
   if (Number.isNaN(distance)) return;
 
   const level = Math.max(0, Math.min(MAX_HEIGHT, MAX_HEIGHT - distance));
-  const volume = calculateVolumeFromLevel(level);
+  const volume = calculateVolume(level);
   const percent = (level / MAX_HEIGHT) * 100;
 
-  tanks[data.tanque] = {
-    ...tanks[data.tanque],
+  realTanks[data.tanque] = {
+    ...realTanks[data.tanque],
     levelMeters: level,
     volume,
     percent
   };
 
-  render();
+  lastMqttUpdate = new Date().toLocaleTimeString("es-CL", { hour12: false });
+  updateMqttStatus();
+
+  if (mode === "real") render();
 });
-
-// reutilizada localmente por MQTT
-function calculateVolumeFromLevel(level) {
-  const safeLevel = Math.max(0, Math.min(MAX_HEIGHT, level));
-
-  if (safeLevel <= CONE_HEIGHT) {
-    return V_CONE * Math.pow(safeLevel / CONE_HEIGHT, 3);
-  }
-
-  return V_CONE + V_CYL * ((safeLevel - CONE_HEIGHT) / CYL_HEIGHT);
-}
 
 socket.on("siloState", (backendState) => {
   Object.keys(backendState || {}).forEach((tanque) => {
-    if (!tanks[tanque]) return;
-    tanks[tanque] = {
-      ...tanks[tanque],
+    if (!realTanks[tanque]) return;
+    realTanks[tanque] = {
+      ...realTanks[tanque],
       ...backendState[tanque]
     };
   });
-  render();
+
+  if (mode === "real") render();
 });
 
 socket.on("turnData", (data) => {
   turnData = data || {};
-  render();
+  if (mode === "real") render();
 });
 
 socket.on("siloConfig", (config) => {
   Object.keys(config || {}).forEach((tanque) => {
-    if (tanks[tanque] && PRODUCTS[config[tanque]]) {
-      tanks[tanque].product = config[tanque];
+    if (PRODUCTS[config[tanque]]) {
+      setProductAllModes(tanque, config[tanque]);
     }
   });
   render();
 });
 
 socket.on("historyData", (backendHistory) => {
-  history = {
+  historyReal = {
     "DL-5": backendHistory?.["DL-5"] || [],
     "VE-03": backendHistory?.["VE-03"] || [],
     "ASE": backendHistory?.["ASE"] || []
   };
-  render();
+
+  if (mode === "real") render();
 });
 
-function requestInitialData() {
+function requestRealData() {
   socket.emit("getTurnData");
   socket.emit("getSiloConfig");
   socket.emit("getHistoryData");
   socket.emit("getSiloState");
 }
 
-requestInitialData();
-
+// DEMO EN PARALELO
 setInterval(() => {
-  if (mode !== "demo") return;
-
-  Object.keys(tanks).forEach((id) => {
-    const current = tanks[id].levelMeters || 3;
+  Object.keys(demoTanks).forEach((id) => {
+    const current = demoTanks[id].levelMeters || 3;
     const next = Math.max(0, Math.min(MAX_HEIGHT, current + (Math.random() - 0.5) * 0.3));
-    const volume = calculateVolumeFromLevel(next);
+    const volume = calculateVolume(next);
     const percent = (next / MAX_HEIGHT) * 100;
 
-    tanks[id] = {
-      ...tanks[id],
+    demoTanks[id] = {
+      ...demoTanks[id],
       levelMeters: next,
       volume,
       percent
     };
   });
 
-  render();
+  updateDemoHistory();
+
+  if (mode === "demo") render();
 }, 2000);
 
 document.querySelectorAll('input[name="mode"]').forEach((radio) => {
   radio.addEventListener("change", (e) => {
     mode = e.target.value;
-    if (mode === "real") requestInitialData();
+    if (mode === "real") requestRealData();
+    render();
   });
 });
 
+requestRealData();
 renderTopPanel();
 initCharts();
 render();
+updateMqttStatus();
