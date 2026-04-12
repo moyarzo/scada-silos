@@ -413,6 +413,6 @@ io.on("connection", function (socket) {
 
 app.use(express.static(__dirname));
 
-server.listen(3000, function () {
+server.listen(3000, "0.0.0.0", function () {
   console.log("Servidor 3000");
 });
