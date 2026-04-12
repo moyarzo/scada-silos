@@ -7,41 +7,33 @@
 </head>
 
 <body>
+
   <div class="header">
-    <img src="logo.png" class="logo" alt="Logo">
-    <h1>🏭 SISTEMA MONITOREO PLANTA LOS BRONCES - SILOS DE MATRIZ</h1>
+    <img src="logo.png" class="logo">
+    <h1>Sistema Monitoreo Planta Los Bronces - Silos de Matriz</h1>
   </div>
 
   <div class="top-panel" id="topPanel"></div>
 
   <div class="mode-bar">
     <div class="mode-selector">
-      <label>
-        <input type="radio" name="mode" value="demo" checked>
-        Modo Demo
-      </label>
-      <label>
-        <input type="radio" name="mode" value="real">
-        Modo Real
-      </label>
+      <label><input type="radio" name="mode" value="demo" checked> Demo</label>
+      <label><input type="radio" name="mode" value="real"> Real</label>
     </div>
 
-    <div class="mqtt-status" id="mqttStatus">
-      Última actualización MQTT: --
-    </div>
+    <div id="mqttStatus">Última actualización MQTT: --</div>
 
-    <button id="exportBtn" class="export-btn">Exportar datos</button>
+    <button id="exportBtn">Descargar datos</button>
+    <button id="exportTrendBtn">Descargar tendencia</button>
   </div>
 
-  <div class="grid" id="grid"></div>
-
-  <footer class="footer">
-    Desarrollado por M. Oyarzo
-  </footer>
+  <div id="grid" class="grid"></div>
 
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+
   <script src="app.js"></script>
+
 </body>
 </html>
