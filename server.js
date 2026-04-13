@@ -249,12 +249,10 @@ async function buildExportExcel() {
   var siloProducts = getSiloProducts();
   var i, row, tanque, product, volume, massTon;
 
-  // Totalizador
   sheet.getCell("C4").value = Number(totals["DL-5"].toFixed(1));
   sheet.getCell("D4").value = Number(totals["ASE"].toFixed(1));
   sheet.getCell("E4").value = Number(totals["VE-03"].toFixed(1));
 
-  // Registro turno
   sheet.getCell("C9").value = (turn.start && turn.start["DL-5"] != null) ? Number(turn.start["DL-5"].toFixed(1)) : "";
   sheet.getCell("D9").value = (turn.start && turn.start["ASE"] != null) ? Number(turn.start["ASE"].toFixed(1)) : "";
   sheet.getCell("E9").value = (turn.start && turn.start["VE-03"] != null) ? Number(turn.start["VE-03"].toFixed(1)) : "";
@@ -263,7 +261,6 @@ async function buildExportExcel() {
   sheet.getCell("D10").value = (turn.end && turn.end["ASE"] != null) ? Number(turn.end["ASE"].toFixed(1)) : "";
   sheet.getCell("E10").value = (turn.end && turn.end["VE-03"] != null) ? Number(turn.end["VE-03"].toFixed(1)) : "";
 
-  // Almacenamiento por silo
   for (i = 1; i <= 8; i++) {
     row = 14 + i;
     tanque = "tanque" + i;
@@ -355,11 +352,9 @@ client.on("message", function (topic, message) {
   }
 });
 
-// tareas backend 24/7
 setInterval(checkShift, 60000);
 setInterval(updatePersistentHistory, 60000);
 
-// RUTA EXCEL
 app.get("/export-data", async function (req, res) {
   try {
     var exportFile = await buildExportExcel();
@@ -370,7 +365,6 @@ app.get("/export-data", async function (req, res) {
   }
 });
 
-// RUTA CSV SEMANAL
 app.get("/export-trend", function (req, res) {
   try {
     var csv = buildTrendCsv();
@@ -385,7 +379,6 @@ app.get("/export-trend", function (req, res) {
   }
 });
 
-// SOCKET
 io.on("connection", function (socket) {
   socket.on("getTurnData", function () {
     var data = readJson(TURN_FILE, {});
