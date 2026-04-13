@@ -2,44 +2,40 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-
-  <!-- 🔥 CLAVE PARA RESPONSIVE -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>Sistema Monitoreo Planta Los Bronces - Silos de Matriz</title>
-
   <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
 
-  <div class="container">
-
-    <header class="header">
-      <h1>Sistema Monitoreo Planta Los Bronces</h1>
-      <div class="status-bar">
-        <span id="modo">Modo: REAL</span>
-        <span id="mqtt-status">Última actualización MQTT: --:--:--</span>
-      </div>
-    </header>
-
-    <!-- SILOS -->
-    <section class="silos-grid" id="silosContainer"></section>
-
-    <!-- RESUMEN -->
-    <section class="resumen-grid" id="resumenContainer"></section>
-
-    <!-- GRÁFICOS -->
-    <section class="charts-container" id="chartsContainer"></section>
-
-    <!-- BOTONES -->
-    <section class="acciones">
-      <button onclick="descargarDatos()">Descargar datos</button>
-      <button onclick="descargarTendencia()">Descargar tendencia</button>
-    </section>
-
+  <div class="header">
+    <img src="logo.png" class="logo" alt="Logo">
+    <h1>Sistema Monitoreo Planta Los Bronces - Silos de Matriz</h1>
   </div>
 
+  <div class="top-panel" id="topPanel"></div>
+
+  <div class="mode-bar">
+    <div class="mode-selector">
+      <label><input type="radio" name="mode" value="demo" checked> Modo Demo</label>
+      <label><input type="radio" name="mode" value="real"> Modo Real</label>
+    </div>
+
+    <div class="mqtt-status" id="mqttStatus">Última actualización MQTT: --</div>
+
+    <button id="exportBtn" class="export-btn">Descargar datos</button>
+    <button id="exportTrendBtn" class="export-btn">Descargar tendencia</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <footer class="footer">
+    Developed by M. Oyarzo (marco.oyarzo@enaex.com)
+  </footer>
+
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
