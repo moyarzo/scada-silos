@@ -107,6 +107,7 @@ function getActiveProducts() {
   Object.keys(realTanks).forEach(function (key) {
     active.add(realTanks[key].product);
   });
+
   return PRODUCT_ORDER.filter(function (product) {
     return active.has(product);
   });
@@ -144,7 +145,7 @@ function createGauge(percent, color) {
   const progress = (percent / 100) * circumference;
 
   return `
-    <svg width="150" height="100">
+    <svg width="150" height="100" viewBox="0 0 150 100" preserveAspectRatio="xMidYMid meet">
       <path d="M20 75 A55 55 0 0 1 130 75"
         stroke="#e5e7eb"
         stroke-width="12"
@@ -170,7 +171,7 @@ function renderTopPanel() {
   const topPanel = document.getElementById("topPanel");
   const activeProducts = getActiveProducts();
 
-  topPanel.style.gridTemplateColumns = `repeat(${activeProducts.length || 1}, 1fr)`;
+  topPanel.style.gridTemplateColumns = `repeat(${activeProducts.length || 1}, minmax(0, 1fr))`;
 
   topPanel.innerHTML = activeProducts.map(function (product) {
     const safeId = product.replace(/[^a-zA-Z0-9]/g, "");
@@ -281,8 +282,8 @@ function initCharts() {
       },
       options: {
         responsive: true,
-        animation: false,
         maintainAspectRatio: false,
+        animation: false,
         plugins: {
           legend: { display: false },
           zoom: {
@@ -309,7 +310,7 @@ function initCharts() {
             max: FIXED_DAY_LABELS.length - 1,
             ticks: {
               autoSkip: true,
-              maxTicksLimit: 13
+              maxTicksLimit: window.innerWidth < 768 ? 7 : 13
             },
             grid: {
               display: true,
@@ -615,6 +616,11 @@ document.querySelectorAll('input[name="mode"]').forEach(function (radio) {
 
 document.getElementById("exportBtn").addEventListener("click", exportData);
 document.getElementById("exportTrendBtn").addEventListener("click", exportTrend);
+
+window.addEventListener("resize", function () {
+  initCharts();
+  updateCharts();
+});
 
 requestRealData();
 renderTopPanel();
