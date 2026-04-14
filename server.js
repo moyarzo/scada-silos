@@ -130,30 +130,58 @@ function getCurrentTotalsFromBackend() {
   return totals;
 }
 
+// ===== TIEMPO LOCAL DE LA VM =====
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
 function today() {
-  return new Date().toISOString().split("T")[0];
+  var now = new Date();
+  return (
+    now.getFullYear() +
+    "-" +
+    pad2(now.getMonth() + 1) +
+    "-" +
+    pad2(now.getDate())
+  );
 }
 
 function formatDateYYYYMMDD(dateObj) {
   var date = dateObj || new Date();
-  var y = date.getFullYear();
-  var m = String(date.getMonth() + 1).padStart(2, "0");
-  var d = String(date.getDate()).padStart(2, "0");
-  return "" + y + m + d;
+  return (
+    date.getFullYear() +
+    pad2(date.getMonth() + 1) +
+    pad2(date.getDate())
+  );
 }
 
 function getDateKeyDaysAgo(daysAgo) {
   var date = new Date();
   date.setDate(date.getDate() - daysAgo);
-  return date.toISOString().split("T")[0];
+
+  return (
+    date.getFullYear() +
+    "-" +
+    pad2(date.getMonth() + 1) +
+    "-" +
+    pad2(date.getDate())
+  );
+}
+
+function getCurrentHour() {
+  return new Date().getHours();
 }
 
 function getRounded5MinLabel() {
   var now = new Date();
   var minutes = now.getMinutes();
   var rounded = Math.floor(minutes / 5) * 5;
-  return String(now.getHours()).padStart(2, "0") + ":" + String(rounded).padStart(2, "0");
+
+  return pad2(now.getHours()) + ":" + pad2(rounded);
 }
+
+// ===== HISTORIAL =====
 
 function getDefaultHistoryDay() {
   return {
@@ -211,8 +239,82 @@ function getWeeklyHistory() {
   return result;
 }
 
+// ===== EXPORTACIÓN CONTINUA 24H X 5 MIN =====
+
+function getFullDay5MinLabels() {
+  var labels = [];
+  var h, m;
+
+  for (h = 0; h < 24; h++) {
+    for (m = 0; m < 60; m += 5) {
+      labels.push(pad2(h) + ":" + pad2(m));
+    }
+  }
+
+  return labels;
+}
+
+function buildContinuousDaySeries(dayData, carryValues) {
+  var labels = getFullDay5MinLabels();
+  var result = [];
+  var map = { "DL-5": {}, "VE-03": {}, "ASE": {} };
+  var product, i, time, row;
+
+  for (product in dayData) {
+    dayData[product].forEach(function (item) {
+      map[product][item.time] = Number(item.value);
+    });
+  }
+
+  for (i = 0; i < labels.length; i++) {
+    time = labels[i];
+    row = { time: time, values: {} };
+
+    ["DL-5", "VE-03", "ASE"].forEach(function (p) {
+      if (Object.prototype.hasOwnProperty.call(map[p], time)) {
+        carryValues[p] = map[p][time];
+      }
+      row.values[p] = carryValues[p];
+    });
+
+    result.push(row);
+  }
+
+  return result;
+}
+
+function buildTrendCsv() {
+  var weekly = getWeeklyHistory();
+  var dayKeys = Object.keys(weekly).sort();
+  var csv = "Fecha,Hora,DL-5,VE-03,ASE\n";
+  var carryValues = {
+    "DL-5": 0,
+    "VE-03": 0,
+    "ASE": 0
+  };
+
+  dayKeys.forEach(function (dayKey) {
+    var dayData = weekly[dayKey] || getDefaultHistoryDay();
+    var continuousRows = buildContinuousDaySeries(dayData, carryValues);
+
+    continuousRows.forEach(function (row) {
+      csv += [
+        dayKey,
+        row.time,
+        Number(row.values["DL-5"]).toFixed(2),
+        Number(row.values["VE-03"]).toFixed(2),
+        Number(row.values["ASE"]).toFixed(2)
+      ].join(",") + "\n";
+    });
+  });
+
+  return csv;
+}
+
+// ===== TURNOS =====
+
 function checkShift() {
-  var h = new Date().getHours();
+  var h = getCurrentHour();
   var d = readJson(TURN_FILE, {});
   var t = today();
   var totals = getCurrentTotalsFromBackend();
@@ -230,6 +332,8 @@ function getTodayTurnData() {
   var data = readJson(TURN_FILE, {});
   return data[today()] || {};
 }
+
+// ===== EXCEL =====
 
 async function buildExportExcel() {
   if (!fs.existsSync(TEMPLATE_FILE)) {
@@ -280,44 +384,8 @@ async function buildExportExcel() {
   return { fileName: fileName, filePath: filePath };
 }
 
-function buildTrendCsv() {
-  var weekly = getWeeklyHistory();
-  var dayKeys = Object.keys(weekly).sort();
-  var csv = "Fecha,Hora,DL-5,VE-03,ASE\n";
+// ===== MQTT =====
 
-  dayKeys.forEach(function (dayKey) {
-    var dayData = weekly[dayKey];
-    var times = {};
-    var product;
-    var sortedTimes;
-
-    for (product in dayData) {
-      dayData[product].forEach(function (item) {
-        times[item.time] = true;
-      });
-    }
-
-    sortedTimes = Object.keys(times).sort();
-
-    sortedTimes.forEach(function (time) {
-      var row = [dayKey, time];
-
-      ["DL-5", "VE-03", "ASE"].forEach(function (p) {
-        var entry = dayData[p].find(function (h) {
-          return h.time === time;
-        });
-
-        row.push(entry ? Number(entry.value).toFixed(2) : "");
-      });
-
-      csv += row.join(",") + "\n";
-    });
-  });
-
-  return csv;
-}
-
-// MQTT
 var client = mqtt.connect("mqtt://localhost:1883");
 
 client.on("connect", function () {
@@ -352,8 +420,12 @@ client.on("message", function (topic, message) {
   }
 });
 
+// ===== TAREAS =====
+
 setInterval(checkShift, 60000);
 setInterval(updatePersistentHistory, 60000);
+
+// ===== RUTAS =====
 
 app.get("/export-data", async function (req, res) {
   try {
@@ -378,6 +450,8 @@ app.get("/export-trend", function (req, res) {
     return res.status(500).send("No fue posible generar el archivo CSV");
   }
 });
+
+// ===== SOCKET =====
 
 io.on("connection", function (socket) {
   socket.on("getTurnData", function () {
