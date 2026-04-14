@@ -484,7 +484,7 @@ function render() {
         </div>
       </div>
 
-      <select class="product-select" data-id="${id}">
+      <select class="product-select" data-id="${id}" ${mode === "real" ? "disabled" : ""}>
         ${Object.keys(PRODUCTS).map(function (p) {
           return `<option value="${p}" ${p === t.product ? "selected" : ""}>${p}</option>`;
         }).join("")}
