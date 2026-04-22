@@ -534,8 +534,13 @@ socket.on("nivel", function (data) {
     product: realTanks[data.tanque].product
   };
 
-  lastMqttUpdate = new Date().toLocaleTimeString("es-CL", { hour12: false });
-  updateMqttStatus();
+
+  // usar hora del backend (VM)
+  if (data.serverTime) {
+    lastMqttUpdate = data.serverTime;
+  }
+
+});
 
   if (mode === "real") render();
 });
