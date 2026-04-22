@@ -434,13 +434,19 @@ client.on("message", function (topic, message) {
     var rawUint32 = parseInt(rawValue, 10);
     if (Number.isNaN(rawUint32)) return;
 
-    // convertir UINT32 crudo a float usando word swap
-    var level = uint32ToFloatWordSwap(rawUint32);
+    var sensorDistance = uint32ToFloatWordSwap(rawUint32);
 
-    if (Number.isNaN(level)) return;
-    if (!Number.isFinite(level)) return;
+    if (Number.isNaN(sensorDistance)) return;
+    if (!Number.isFinite(sensorDistance)) return;
 
-    // seguridad de rango
+    // ajuste fino solicitado
+    sensorDistance = sensorDistance * 0.98;
+
+    // radar en parte superior:
+    // 0 = lleno, MAX_HEIGHT = vacío
+    sensorDistance = Math.max(0, Math.min(MAX_HEIGHT, sensorDistance));
+
+    var level = MAX_HEIGHT - sensorDistance;
     level = Math.max(0, Math.min(MAX_HEIGHT, level));
 
     var volume = calculateVolume(level);
@@ -458,7 +464,9 @@ client.on("message", function (topic, message) {
       "MQTT recibido:",
       tanque,
       "raw=" + rawUint32,
-      "level_m=" + level.toFixed(3)
+      "distance_m=" + sensorDistance.toFixed(3),
+      "level_m=" + level.toFixed(3),
+      "percent=" + percent.toFixed(2)
     );
 
   } catch (error) {
