@@ -605,8 +605,8 @@ setInterval(function () {
     return;
   }
 
-  // si pasan más de 15 segundos sin dato, marcar sin señal
-  if (Date.now() - lastMqttHeartbeat > 15000) {
+  // si pasan más de 5 minutos sin dato, marcar sin señal
+  if (Date.now() - lastMqttHeartbeat > 300000) {
     mqttSignalOk = false;
     updateMqttStatus();
   }
