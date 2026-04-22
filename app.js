@@ -535,10 +535,15 @@ socket.on("nivel", function (data) {
   };
 
 
+
   // usar hora del backend (VM)
   if (data.serverTime) {
     lastMqttUpdate = data.serverTime;
-  };
+  }
+
+  updateMqttStatus();
+
+  
 
 });
 
