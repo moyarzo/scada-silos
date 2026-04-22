@@ -384,6 +384,13 @@ async function buildExportExcel() {
   return { fileName: fileName, filePath: filePath };
 }
 
+
+function uint32ToFloat(uintValue) {
+  var buffer = Buffer.allocUnsafe(4);
+  buffer.writeUInt32BE(uintValue >>> 0, 0);
+  return buffer.readFloatBE(0);
+}
+
 // ===== MQTT =====
 
 var client = mqtt.connect("mqtt://localhost:1883");
@@ -397,11 +404,33 @@ client.on("message", function (topic, message) {
   try {
     var parts = topic.split("/");
     var tanque = parts[parts.length - 1];
-    var level = parseFloat(message.toString());
+    var payload = JSON.parse(message.toString());
 
     if (!latestSilos[tanque]) return;
-    if (Number.isNaN(level)) return;
+    if (!payload.d) return;
 
+    var rawValue = null;
+    var key;
+
+    for (key in payload.d) {
+      if (key !== "type") {
+        rawValue = payload.d[key];
+        break;
+      }
+    }
+
+    if (rawValue == null) return;
+
+    var rawUint32 = parseInt(rawValue, 10);
+    if (Number.isNaN(rawUint32)) return;
+
+    // convertir UINT32 bruto a float IEEE754
+    var level = uint32ToFloat(rawUint32);
+
+    if (Number.isNaN(level)) return;
+    if (!Number.isFinite(level)) return;
+
+    // seguridad de rango
     level = Math.max(0, Math.min(MAX_HEIGHT, level));
 
     var volume = calculateVolume(level);
@@ -415,10 +444,15 @@ client.on("message", function (topic, message) {
 
     io.emit("siloState", latestSilos);
 
-    console.log("MQTT nivel recibido:", topic, level);
+    console.log(
+      "MQTT recibido:",
+      tanque,
+      "raw=" + rawUint32,
+      "level_m=" + level.toFixed(3)
+    );
 
   } catch (error) {
-    console.error("Error procesando MQTT nivel:", error, message.toString());
+    console.error("Error procesando MQTT:", error, message.toString());
   }
 });
 
