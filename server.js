@@ -181,6 +181,12 @@ function getRounded5MinLabel() {
   return pad2(now.getHours()) + ":" + pad2(rounded);
 }
 
+function getServerTime() {
+  return new Date().toLocaleTimeString("es-CL", {
+    hour12: false
+  });
+}
+
 // ===== HISTORIAL =====
 
 function getDefaultHistoryDay() {
@@ -384,15 +390,13 @@ async function buildExportExcel() {
   return { fileName: fileName, filePath: filePath };
 }
 
+// ===== MQTT =====
 
 function uint32ToFloatWordSwap(uintValue) {
   var buffer = Buffer.allocUnsafe(4);
 
-  // escribir el entero bruto
   buffer.writeUInt32BE(uintValue >>> 0, 0);
 
-  // invertir palabras de 16 bits:
-  // ABCD -> CDAB
   var swapped = Buffer.from([
     buffer[2], buffer[3],
     buffer[0], buffer[1]
@@ -400,8 +404,6 @@ function uint32ToFloatWordSwap(uintValue) {
 
   return swapped.readFloatBE(0);
 }
-
-// ===== MQTT =====
 
 var client = mqtt.connect("mqtt://localhost:1883");
 
@@ -442,7 +444,7 @@ client.on("message", function (topic, message) {
     // ajuste fino solicitado
     sensorDistance = sensorDistance * 0.98;
 
-    // radar en parte superior:
+    // radar montado arriba:
     // 0 = lleno, MAX_HEIGHT = vacío
     sensorDistance = Math.max(0, Math.min(MAX_HEIGHT, sensorDistance));
 
@@ -460,7 +462,8 @@ client.on("message", function (topic, message) {
 
     io.emit("nivel", {
       tanque: tanque,
-      nivel: String(sensorDistance)
+      nivel: String(sensorDistance),
+      serverTime: getServerTime()
     });
 
     io.emit("siloState", latestSilos);
@@ -478,7 +481,6 @@ client.on("message", function (topic, message) {
     console.error("Error procesando MQTT:", error, message.toString());
   }
 });
-
 
 // ===== TAREAS =====
 
