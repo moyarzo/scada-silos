@@ -390,18 +390,20 @@ var client = mqtt.connect("mqtt://localhost:1883");
 
 client.on("connect", function () {
   console.log("MQTT conectado");
-  client.subscribe("silos/nivel/#");
+  client.subscribe("planta/losbronces/silos/#");
 });
 
 client.on("message", function (topic, message) {
   try {
     var parts = topic.split("/");
-    var tanque = parts[2];
-    var distance = parseFloat(message.toString());
+    var tanque = parts[parts.length - 1];
+    var level = parseFloat(message.toString());
 
-    if (!latestSilos[tanque] || Number.isNaN(distance)) return;
+    if (!latestSilos[tanque]) return;
+    if (Number.isNaN(level)) return;
 
-    var level = Math.max(0, Math.min(MAX_HEIGHT, MAX_HEIGHT - distance));
+    level = Math.max(0, Math.min(MAX_HEIGHT, level));
+
     var volume = calculateVolume(level);
     var percent = (level / MAX_HEIGHT) * 100;
 
@@ -411,12 +413,12 @@ client.on("message", function (topic, message) {
       percent: percent
     };
 
-    io.emit("nivel", {
-      tanque: tanque,
-      nivel: message.toString()
-    });
+    io.emit("siloState", latestSilos);
+
+    console.log("MQTT nivel recibido:", topic, level);
+
   } catch (error) {
-    console.error("Error procesando mensaje MQTT:", error);
+    console.error("Error procesando MQTT nivel:", error, message.toString());
   }
 });
 
