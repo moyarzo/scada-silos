@@ -458,6 +458,11 @@ client.on("message", function (topic, message) {
       percent: percent
     };
 
+    io.emit("nivel", {
+      tanque: tanque,
+      nivel: String(sensorDistance)
+    });
+
     io.emit("siloState", latestSilos);
 
     console.log(
