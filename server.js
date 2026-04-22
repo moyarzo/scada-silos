@@ -385,10 +385,20 @@ async function buildExportExcel() {
 }
 
 
-function uint32ToFloat(uintValue) {
+function uint32ToFloatWordSwap(uintValue) {
   var buffer = Buffer.allocUnsafe(4);
-  buffer.writeUInt32LE(uintValue >>> 0, 0);
-  return buffer.readFloatLE(0);
+
+  // escribir el entero bruto
+  buffer.writeUInt32BE(uintValue >>> 0, 0);
+
+  // invertir palabras de 16 bits:
+  // ABCD -> CDAB
+  var swapped = Buffer.from([
+    buffer[2], buffer[3],
+    buffer[0], buffer[1]
+  ]);
+
+  return swapped.readFloatBE(0);
 }
 
 // ===== MQTT =====
@@ -424,8 +434,8 @@ client.on("message", function (topic, message) {
     var rawUint32 = parseInt(rawValue, 10);
     if (Number.isNaN(rawUint32)) return;
 
-    // convertir UINT32 bruto a float IEEE754
-    var level = uint32ToFloat(rawUint32);
+    // convertir UINT32 crudo a float usando word swap
+    var level = uint32ToFloatWordSwap(rawUint32);
 
     if (Number.isNaN(level)) return;
     if (!Number.isFinite(level)) return;
@@ -450,6 +460,11 @@ client.on("message", function (topic, message) {
       "raw=" + rawUint32,
       "level_m=" + level.toFixed(3)
     );
+
+  } catch (error) {
+    console.error("Error procesando MQTT:", error, message.toString());
+  }
+});
 
   } catch (error) {
     console.error("Error procesando MQTT:", error, message.toString());
