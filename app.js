@@ -20,7 +20,9 @@ const PRODUCTS = {
 
 let mode = "demo";
 let turnData = {};
-let lastMqttUpdate = null;
+let lastMqttUpdate = "--:--:--";
+let mqttSignalOk = false;
+let lastMqttHeartbeat = 0;
 let charts = {};
 
 let historyReal = {
@@ -131,12 +133,11 @@ function updateMqttStatus() {
   const el = document.getElementById("mqttStatus");
   if (!el) return;
 
-  if (!lastMqttUpdate) {
-    el.textContent = "Última actualización MQTT: --";
-    return;
+  if (mqttSignalOk) {
+    el.textContent = `🟢 MQTT Activo (${lastMqttUpdate})`;
+  } else {
+    el.textContent = `🔴 Sin señal (${lastMqttUpdate})`;
   }
-
-  el.textContent = `Última actualización MQTT: ${lastMqttUpdate}`;
 }
 
 function createGauge(percent, color) {
@@ -518,36 +519,16 @@ function render() {
 
 // REAL MQTT EN PARALELO
 socket.on("nivel", function (data) {
-  if (!realTanks[data.tanque]) return;
+  if (!data) return;
 
-  const distance = parseFloat(data.nivel);
-  if (Number.isNaN(distance)) return;
-
-  const level = Math.max(0, Math.min(MAX_HEIGHT, MAX_HEIGHT - distance));
-  const volume = calculateVolume(level);
-  const percent = (level / MAX_HEIGHT) * 100;
-
-  realTanks[data.tanque] = {
-    levelMeters: level,
-    volume: volume,
-    percent: percent,
-    product: realTanks[data.tanque].product
-  };
-
-
-
-  // usar hora del backend (VM)
   if (data.serverTime) {
     lastMqttUpdate = data.serverTime;
   }
 
+  mqttSignalOk = true;
+  lastMqttHeartbeat = Date.now();
+
   updateMqttStatus();
-
-  
-
-});
-
-  if (mode === "real") render();
 });
 
 socket.on("siloState", function (backendState) {
@@ -615,6 +596,21 @@ setInterval(function () {
 
   if (mode === "demo") render();
 }, 2000);
+
+// MONITOR DE SEÑAL MQTT
+setInterval(function () {
+  if (!lastMqttHeartbeat) {
+    mqttSignalOk = false;
+    updateMqttStatus();
+    return;
+  }
+
+  // si pasan más de 15 segundos sin dato, marcar sin señal
+  if (Date.now() - lastMqttHeartbeat > 15000) {
+    mqttSignalOk = false;
+    updateMqttStatus();
+  }
+}, 1000);
 
 document.querySelectorAll('input[name="mode"]').forEach(function (radio) {
   radio.addEventListener("change", function (e) {
