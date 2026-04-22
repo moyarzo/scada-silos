@@ -466,10 +466,6 @@ client.on("message", function (topic, message) {
   }
 });
 
-  } catch (error) {
-    console.error("Error procesando MQTT:", error, message.toString());
-  }
-});
 
 // ===== TAREAS =====
 
