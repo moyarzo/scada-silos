@@ -387,8 +387,8 @@ async function buildExportExcel() {
 
 function uint32ToFloat(uintValue) {
   var buffer = Buffer.allocUnsafe(4);
-  buffer.writeUInt32BE(uintValue >>> 0, 0);
-  return buffer.readFloatBE(0);
+  buffer.writeUInt32LE(uintValue >>> 0, 0);
+  return buffer.readFloatLE(0);
 }
 
 // ===== MQTT =====
