@@ -232,12 +232,12 @@ function getTodayHistory() {
   return allHistory[today()] || getDefaultHistoryDay();
 }
 
-function getWeeklyHistory() {
+function getMonthlyHistory() {
   var allHistory = readJson(HISTORY_FILE, {});
   var result = {};
   var i, key;
 
-  for (i = 6; i >= 0; i--) {
+  for (i = 29; i >= 0; i--) {
     key = getDateKeyDaysAgo(i);
     result[key] = allHistory[key] || getDefaultHistoryDay();
   }
@@ -290,8 +290,8 @@ function buildContinuousDaySeries(dayData, carryValues) {
 }
 
 function buildTrendCsv() {
-  var weekly = getWeeklyHistory();
-  var dayKeys = Object.keys(weekly).sort();
+  var monthly = getMonthlyHistory();
+  var dayKeys = Object.keys(monthly).sort();
   var csv = "Fecha,Hora,DL-5,VE-03,ASE\n";
   var carryValues = {
     "DL-5": 0,
@@ -300,7 +300,7 @@ function buildTrendCsv() {
   };
 
   dayKeys.forEach(function (dayKey) {
-    var dayData = weekly[dayKey] || getDefaultHistoryDay();
+    var dayData = monthly[dayKey] || getDefaultHistoryDay();
     var continuousRows = buildContinuousDaySeries(dayData, carryValues);
 
     continuousRows.forEach(function (row) {
@@ -502,7 +502,7 @@ app.get("/export-data", async function (req, res) {
 app.get("/export-trend", function (req, res) {
   try {
     var csv = buildTrendCsv();
-    var fileName = "tendencia_semanal_" + formatDateYYYYMMDD() + ".csv";
+    var fileName = "tendencia_30_dias_" + formatDateYYYYMMDD() + ".csv";
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=" + fileName);
