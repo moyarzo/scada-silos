@@ -18,12 +18,13 @@ const PRODUCTS = {
   "ASE": { density: 800, color: "#ea580c" }
 };
 
-let mode = "demo";
+let mode = "real";
 let turnData = {};
 let lastMqttUpdate = "--:--:--";
 let mqttSignalOk = false;
 let lastMqttHeartbeat = 0;
 let charts = {};
+let demoProductsInitialized = false;
 
 let historyReal = {
   "DL-5": [],
@@ -106,8 +107,10 @@ function buildFixedSeries(historyArray) {
 
 function getActiveProducts() {
   const active = new Set();
-  Object.keys(realTanks).forEach(function (key) {
-    active.add(realTanks[key].product);
+  const source = getViewTanks();
+
+  Object.keys(source).forEach(function (key) {
+    active.add(source[key].product);
   });
 
   return PRODUCT_ORDER.filter(function (product) {
@@ -123,10 +126,16 @@ function getViewHistory() {
   return mode === "real" ? historyReal : historyDemo;
 }
 
-function setProductAllModes(tanque, product) {
-  if (!realTanks[tanque] || !demoTanks[tanque] || !PRODUCTS[product]) return;
-  realTanks[tanque].product = product;
-  demoTanks[tanque].product = product;
+function setProductForCurrentMode(tanque, product) {
+  if (!PRODUCTS[product]) return;
+
+  if (mode === "real") {
+    if (!realTanks[tanque]) return;
+    realTanks[tanque].product = product;
+  } else {
+    if (!demoTanks[tanque]) return;
+    demoTanks[tanque].product = product;
+  }
 }
 
 function updateMqttStatus() {
@@ -499,8 +508,13 @@ function render() {
     select.addEventListener("change", function (e) {
       const id = e.target.dataset.id;
       const product = e.target.value;
-      setProductAllModes(id, product);
-      saveSiloProductConfig(id, product);
+
+      setProductForCurrentMode(id, product);
+
+      if (mode === "real") {
+        saveSiloProductConfig(id, product);
+      }
+
       render();
     });
   });
@@ -553,9 +567,17 @@ socket.on("turnData", function (data) {
 socket.on("siloConfig", function (config) {
   Object.keys(config || {}).forEach(function (tanque) {
     if (PRODUCTS[config[tanque]]) {
-      setProductAllModes(tanque, config[tanque]);
+      if (realTanks[tanque]) {
+        realTanks[tanque].product = config[tanque];
+      }
+
+      if (!demoProductsInitialized && demoTanks[tanque]) {
+        demoTanks[tanque].product = config[tanque];
+      }
     }
   });
+
+  demoProductsInitialized = true;
   render();
 });
 
