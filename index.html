@@ -16,11 +16,6 @@
     <h1>Sistema Monitoreo Planta Los Bronces - Silos de Matriz</h1>
   </div>
 
-  <div class="chart-date-bar">
-    <label for="chartDateSelect">Día gráfico:</label>
-    <select id="chartDateSelect"></select>
-  </div>
-
   <div class="top-panel" id="topPanel"></div>
 
   <div class="mode-bar">
@@ -37,6 +32,11 @@
     </div>
 
     <div class="mqtt-status" id="mqttStatus">🔴 Sin señal (--:--:--)</div>
+
+    <div class="chart-date-bar">
+    <label for="chartDateSelect">Día gráfico:</label>
+    <select id="chartDateSelect"></select>
+    </div>
 
     <button id="exportBtn" class="export-btn">Descargar datos</button>
     <button id="exportTrendBtn" class="export-btn">Descargar tendencia 30 días</button>
