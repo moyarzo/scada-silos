@@ -1,6 +1,6 @@
 const express = require("express");
 const http = require("http");
-const { Server } = require("socket.io");
+const Server = require("socket.io").Server;
 const fs = require("fs");
 const path = require("path");
 const mqtt = require("mqtt");
@@ -10,6 +10,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// CONFIG
 const CONE_HEIGHT = 1.67;
 const CYL_HEIGHT = 4.25;
 const MAX_HEIGHT = CONE_HEIGHT + CYL_HEIGHT;
@@ -58,6 +59,8 @@ if (!fs.existsSync(EXPORTS_DIR)) {
   fs.mkdirSync(EXPORTS_DIR, { recursive: true });
 }
 
+// ===== ARCHIVOS =====
+
 function ensureJsonFile(filePath, defaultValue) {
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2));
@@ -77,80 +80,73 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
+// ===== TIEMPO LOCAL VM =====
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
 function today() {
-  const now = new Date();
-  return now.getFullYear() + "-" + pad2(now.getMonth() + 1) + "-" + pad2(now.getDate());
+  var now = new Date();
+  return (
+    now.getFullYear() +
+    "-" +
+    pad2(now.getMonth() + 1) +
+    "-" +
+    pad2(now.getDate())
+  );
 }
 
 function formatDateYYYYMMDD(dateObj) {
-  const date = dateObj || new Date();
-  return date.getFullYear() + pad2(date.getMonth() + 1) + pad2(date.getDate());
+  var date = dateObj || new Date();
+  return (
+    date.getFullYear() +
+    pad2(date.getMonth() + 1) +
+    pad2(date.getDate())
+  );
 }
 
 function getDateKeyDaysAgo(daysAgo) {
-  const date = new Date();
+  var date = new Date();
   date.setDate(date.getDate() - daysAgo);
-  return date.getFullYear() + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate());
+
+  return (
+    date.getFullYear() +
+    "-" +
+    pad2(date.getMonth() + 1) +
+    "-" +
+    pad2(date.getDate())
+  );
 }
 
 function getRounded5MinLabel() {
-  const now = new Date();
-  const rounded = Math.floor(now.getMinutes() / 5) * 5;
+  var now = new Date();
+  var rounded = Math.floor(now.getMinutes() / 5) * 5;
   return pad2(now.getHours()) + ":" + pad2(rounded);
 }
 
 function getServerTime() {
-  return new Date().toLocaleTimeString("es-CL", { hour12: false });
+  return new Date().toLocaleTimeString("es-CL", {
+    hour12: false
+  });
 }
 
 function getLast30DateKeys() {
-  const dates = [];
+  var dates = [];
+  var i;
 
-  for (let i = 29; i >= 0; i--) {
+  for (i = 29; i >= 0; i--) {
     dates.push(getDateKeyDaysAgo(i));
   }
 
   return dates;
 }
 
-function calculateVolume(level) {
-  const safeLevel = Math.max(0, Math.min(MAX_HEIGHT, level));
-
-  if (safeLevel <= CONE_HEIGHT) {
-    return V_CONE * Math.pow(safeLevel / CONE_HEIGHT, 3);
-  }
-
-  return V_CONE + V_CYL * ((safeLevel - CONE_HEIGHT) / CYL_HEIGHT);
-}
-
-function getDefaultHistoryDay() {
-  return {
-    "DL-5": [],
-    "VE-03": [],
-    "ASE": []
-  };
-}
-
-function getDefaultSiloHistoryDay() {
-  return {
-    tanque1: [],
-    tanque2: [],
-    tanque3: [],
-    tanque4: [],
-    tanque5: [],
-    tanque6: [],
-    tanque7: [],
-    tanque8: []
-  };
-}
+// ===== CONFIG PRODUCTOS =====
 
 function getSiloProducts() {
-  const cfg = readJson(CONFIG_FILE, DEFAULT_SILO_PRODUCTS);
-  const merged = Object.assign({}, DEFAULT_SILO_PRODUCTS);
+  var cfg = readJson(CONFIG_FILE, DEFAULT_SILO_PRODUCTS);
+  var merged = Object.assign({}, DEFAULT_SILO_PRODUCTS);
 
   Object.keys(cfg || {}).forEach(function (tanque) {
     if (merged[tanque] && PRODUCTS[cfg[tanque]]) {
@@ -165,72 +161,112 @@ function setSiloProduct(tanque, product) {
   if (!DEFAULT_SILO_PRODUCTS[tanque]) return;
   if (!PRODUCTS[product]) return;
 
-  const cfg = getSiloProducts();
+  var cfg = getSiloProducts();
   cfg[tanque] = product;
   writeJson(CONFIG_FILE, cfg);
 }
 
+// ===== CÁLCULOS =====
+
+function calculateVolume(level) {
+  var safeLevel = Math.max(0, Math.min(MAX_HEIGHT, level));
+
+  if (safeLevel <= CONE_HEIGHT) {
+    return V_CONE * Math.pow(safeLevel / CONE_HEIGHT, 3);
+  }
+
+  return V_CONE + V_CYL * ((safeLevel - CONE_HEIGHT) / CYL_HEIGHT);
+}
+
 function getCurrentTotalsFromBackend() {
-  const totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
-  const siloProducts = getSiloProducts();
+  var totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
+  var siloProducts = getSiloProducts();
 
   Object.keys(latestSilos).forEach(function (tanque) {
-    const product = siloProducts[tanque];
-    const volume = latestSilos[tanque].volume || 0;
-    const ton = (volume * PRODUCTS[product].density) / 1000;
+    var product = siloProducts[tanque];
+    var volume = latestSilos[tanque].volume || 0;
+    var ton = (volume * PRODUCTS[product].density) / 1000;
     totals[product] += ton;
   });
 
   return totals;
 }
 
+// ===== HISTORIAL PRODUCTOS =====
+
+function getDefaultHistoryDay() {
+  return {
+    "DL-5": [],
+    "VE-03": [],
+    "ASE": []
+  };
+}
+
 function getTodayHistory() {
-  const allHistory = readJson(HISTORY_FILE, {});
+  var allHistory = readJson(HISTORY_FILE, {});
   return allHistory[today()] || getDefaultHistoryDay();
 }
 
 function getProductHistoryByDate(dateKey) {
-  const allHistory = readJson(HISTORY_FILE, {});
+  var allHistory = readJson(HISTORY_FILE, {});
   return allHistory[dateKey] || getDefaultHistoryDay();
 }
 
-function getTodaySiloHistory() {
-  const allHistory = readJson(SILO_HISTORY_FILE, {});
-  return allHistory[today()] || getDefaultSiloHistoryDay();
-}
-
-function getSiloHistoryByDate(dateKey) {
-  const allHistory = readJson(SILO_HISTORY_FILE, {});
-  return allHistory[dateKey] || getDefaultSiloHistoryDay();
-}
-
 function getMonthlyHistory() {
-  const allHistory = readJson(HISTORY_FILE, {});
-  const result = {};
+  var allHistory = readJson(HISTORY_FILE, {});
+  var result = {};
+  var i;
+  var key;
 
-  for (let i = 29; i >= 0; i--) {
-    const key = getDateKeyDaysAgo(i);
+  for (i = 29; i >= 0; i--) {
+    key = getDateKeyDaysAgo(i);
     result[key] = allHistory[key] || getDefaultHistoryDay();
   }
 
   return result;
 }
 
+// ===== HISTORIAL POR SILO (% LLENADO) =====
+
+function getDefaultSiloHistoryDay() {
+  return {
+    tanque1: [],
+    tanque2: [],
+    tanque3: [],
+    tanque4: [],
+    tanque5: [],
+    tanque6: [],
+    tanque7: [],
+    tanque8: []
+  };
+}
+
+function getTodaySiloHistory() {
+  var allHistory = readJson(SILO_HISTORY_FILE, {});
+  return allHistory[today()] || getDefaultSiloHistoryDay();
+}
+
+function getSiloHistoryByDate(dateKey) {
+  var allHistory = readJson(SILO_HISTORY_FILE, {});
+  return allHistory[dateKey] || getDefaultSiloHistoryDay();
+}
+
+// ===== GUARDADO HISTÓRICO =====
+
 function updatePersistentHistory() {
-  const allHistory = readJson(HISTORY_FILE, {});
-  const siloHistory = readJson(SILO_HISTORY_FILE, {});
-  const day = today();
-  const label = getRounded5MinLabel();
-  const totals = getCurrentTotalsFromBackend();
-  const siloProducts = getSiloProducts();
+  var allHistory = readJson(HISTORY_FILE, {});
+  var siloHistory = readJson(SILO_HISTORY_FILE, {});
+  var day = today();
+  var label = getRounded5MinLabel();
+  var totals = getCurrentTotalsFromBackend();
 
   if (!allHistory[day]) {
     allHistory[day] = getDefaultHistoryDay();
   }
 
   Object.keys(totals).forEach(function (product) {
-    const arr = allHistory[day][product] || [];
-    const lastEntry = arr[arr.length - 1];
+    var arr = allHistory[day][product] || [];
+    var lastEntry = arr[arr.length - 1];
 
     if (!lastEntry) {
       arr.push({ time: label, value: totals[product] });
@@ -248,10 +284,9 @@ function updatePersistentHistory() {
   }
 
   Object.keys(latestSilos).forEach(function (tanque) {
-    const arr = siloHistory[day][tanque] || [];
-    const lastEntry = arr[arr.length - 1];
-
-    const percent = latestSilos[tanque].percent || 0;
+    var arr = siloHistory[day][tanque] || [];
+    var lastEntry = arr[arr.length - 1];
+    var percent = latestSilos[tanque].percent || 0;
 
     if (!lastEntry) {
       arr.push({ time: label, value: percent });
@@ -278,11 +313,15 @@ function updatePersistentHistory() {
   });
 }
 
-function getFullDay5MinLabels() {
-  const labels = [];
+// ===== EXPORTACIÓN CONTINUA 30 DÍAS / 24H X 5 MIN =====
 
-  for (let h = 0; h < 24; h++) {
-    for (let m = 0; m < 60; m += 5) {
+function getFullDay5MinLabels() {
+  var labels = [];
+  var h;
+  var m;
+
+  for (h = 0; h < 24; h++) {
+    for (m = 0; m < 60; m += 5) {
       labels.push(pad2(h) + ":" + pad2(m));
     }
   }
@@ -291,9 +330,9 @@ function getFullDay5MinLabels() {
 }
 
 function buildContinuousDaySeries(dayData, carryValues) {
-  const labels = getFullDay5MinLabels();
-  const result = [];
-  const map = { "DL-5": {}, "VE-03": {}, "ASE": {} };
+  var labels = getFullDay5MinLabels();
+  var result = [];
+  var map = { "DL-5": {}, "VE-03": {}, "ASE": {} };
 
   Object.keys(dayData || {}).forEach(function (product) {
     (dayData[product] || []).forEach(function (item) {
@@ -302,7 +341,7 @@ function buildContinuousDaySeries(dayData, carryValues) {
   });
 
   labels.forEach(function (time) {
-    const row = { time: time, values: {} };
+    var row = { time: time, values: {} };
 
     ["DL-5", "VE-03", "ASE"].forEach(function (product) {
       if (Object.prototype.hasOwnProperty.call(map[product], time)) {
@@ -319,19 +358,18 @@ function buildContinuousDaySeries(dayData, carryValues) {
 }
 
 function buildTrendCsv() {
-  const monthly = getMonthlyHistory();
-  const dayKeys = Object.keys(monthly).sort();
-  let csv = "Fecha,Hora,DL-5,VE-03,ASE\n";
-
-  const carryValues = {
+  var monthly = getMonthlyHistory();
+  var dayKeys = Object.keys(monthly).sort();
+  var csv = "Fecha,Hora,DL-5,VE-03,ASE\n";
+  var carryValues = {
     "DL-5": 0,
     "VE-03": 0,
     "ASE": 0
   };
 
   dayKeys.forEach(function (dayKey) {
-    const dayData = monthly[dayKey] || getDefaultHistoryDay();
-    const rows = buildContinuousDaySeries(dayData, carryValues);
+    var dayData = monthly[dayKey] || getDefaultHistoryDay();
+    var rows = buildContinuousDaySeries(dayData, carryValues);
 
     rows.forEach(function (row) {
       csv += [
@@ -347,92 +385,135 @@ function buildTrendCsv() {
   return csv;
 }
 
+// ===== TURNOS =====
+
 function checkShift() {
-  const h = new Date().getHours();
-  const d = readJson(TURN_FILE, {});
-  const t = today();
-  const totals = getCurrentTotalsFromBackend();
+  var h = new Date().getHours();
+  var d = readJson(TURN_FILE, {});
+  var t = today();
+  var totals = getCurrentTotalsFromBackend();
 
   if (!d[t]) d[t] = {};
 
-  if (h >= 7 && !d[t].start) d[t].start = totals;
-  if (h >= 19 && !d[t].end) d[t].end = totals;
+  if (h >= 7 && !d[t].start) {
+    d[t].start = totals;
+  }
+
+  if (h >= 19 && !d[t].end) {
+    d[t].end = totals;
+  }
 
   writeJson(TURN_FILE, d);
   io.emit("turnData", d[t] || {});
 }
 
 function getTodayTurnData() {
-  const data = readJson(TURN_FILE, {});
+  var data = readJson(TURN_FILE, {});
   return data[today()] || {};
 }
+
+// ===== EXCEL =====
 
 async function buildExportExcel() {
   if (!fs.existsSync(TEMPLATE_FILE)) {
     throw new Error("No se encontró template.xlsx en la carpeta del proyecto");
   }
 
-  const workbook = new ExcelJS.Workbook();
+  var workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(TEMPLATE_FILE);
 
-  const sheet = workbook.getWorksheet("Hoja1");
+  var sheet = workbook.getWorksheet("Hoja1");
 
   if (!sheet) {
     throw new Error('No se encontró la hoja "Hoja1" en template.xlsx');
   }
 
-  const totals = getCurrentTotalsFromBackend();
-  const turn = getTodayTurnData();
-  const siloProducts = getSiloProducts();
+  var totals = getCurrentTotalsFromBackend();
+  var turn = getTodayTurnData();
+  var siloProducts = getSiloProducts();
+  var i;
+  var row;
+  var tanque;
+  var product;
+  var volume;
+  var massTon;
 
   sheet.getCell("C4").value = Number(totals["DL-5"].toFixed(1));
   sheet.getCell("D4").value = Number(totals["ASE"].toFixed(1));
   sheet.getCell("E4").value = Number(totals["VE-03"].toFixed(1));
 
-  sheet.getCell("C9").value = turn.start && turn.start["DL-5"] != null ? Number(turn.start["DL-5"].toFixed(1)) : "";
-  sheet.getCell("D9").value = turn.start && turn.start["ASE"] != null ? Number(turn.start["ASE"].toFixed(1)) : "";
-  sheet.getCell("E9").value = turn.start && turn.start["VE-03"] != null ? Number(turn.start["VE-03"].toFixed(1)) : "";
+  sheet.getCell("C9").value =
+    turn.start && turn.start["DL-5"] != null
+      ? Number(turn.start["DL-5"].toFixed(1))
+      : "";
 
-  sheet.getCell("C10").value = turn.end && turn.end["DL-5"] != null ? Number(turn.end["DL-5"].toFixed(1)) : "";
-  sheet.getCell("D10").value = turn.end && turn.end["ASE"] != null ? Number(turn.end["ASE"].toFixed(1)) : "";
-  sheet.getCell("E10").value = turn.end && turn.end["VE-03"] != null ? Number(turn.end["VE-03"].toFixed(1)) : "";
+  sheet.getCell("D9").value =
+    turn.start && turn.start["ASE"] != null
+      ? Number(turn.start["ASE"].toFixed(1))
+      : "";
 
-  for (let i = 1; i <= 8; i++) {
-    const row = 14 + i;
-    const tanque = "tanque" + i;
-    const product = siloProducts[tanque];
-    const volume = latestSilos[tanque] ? latestSilos[tanque].volume || 0 : 0;
-    const massTon = (volume * PRODUCTS[product].density) / 1000;
+  sheet.getCell("E9").value =
+    turn.start && turn.start["VE-03"] != null
+      ? Number(turn.start["VE-03"].toFixed(1))
+      : "";
+
+  sheet.getCell("C10").value =
+    turn.end && turn.end["DL-5"] != null
+      ? Number(turn.end["DL-5"].toFixed(1))
+      : "";
+
+  sheet.getCell("D10").value =
+    turn.end && turn.end["ASE"] != null
+      ? Number(turn.end["ASE"].toFixed(1))
+      : "";
+
+  sheet.getCell("E10").value =
+    turn.end && turn.end["VE-03"] != null
+      ? Number(turn.end["VE-03"].toFixed(1))
+      : "";
+
+  for (i = 1; i <= 8; i++) {
+    row = 14 + i;
+    tanque = "tanque" + i;
+    product = siloProducts[tanque];
+    volume = latestSilos[tanque] ? latestSilos[tanque].volume || 0 : 0;
+    massTon = (volume * PRODUCTS[product].density) / 1000;
 
     sheet.getCell("C" + row).value = product;
     sheet.getCell("D" + row).value = Number(massTon.toFixed(2));
   }
 
-  const fileName = "stock_diario_" + formatDateYYYYMMDD() + ".xlsx";
-  const filePath = path.join(EXPORTS_DIR, fileName);
+  var fileName = "stock_diario_" + formatDateYYYYMMDD() + ".xlsx";
+  var filePath = path.join(EXPORTS_DIR, fileName);
 
   await workbook.xlsx.writeFile(filePath);
 
-  return { fileName, filePath };
+  return { fileName: fileName, filePath: filePath };
 }
 
+// ===== MQTT DELTA HMI =====
+
 function uint32ToFloatWordSwap(uintValue) {
-  const buffer = Buffer.allocUnsafe(4);
+  var buffer = Buffer.allocUnsafe(4);
 
   buffer.writeUInt32BE(uintValue >>> 0, 0);
 
-  const swapped = Buffer.from([
-    buffer[2], buffer[3],
-    buffer[0], buffer[1]
+  var swapped = Buffer.from([
+    buffer[2],
+    buffer[3],
+    buffer[0],
+    buffer[1]
   ]);
 
   return swapped.readFloatBE(0);
 }
 
 function extractDeltaRawValue(payload) {
+  var key;
+
   if (!payload || !payload.d) return null;
 
-  for (const key in payload.d) {
+  for (key in payload.d) {
     if (key !== "type") {
       return payload.d[key];
     }
@@ -441,7 +522,7 @@ function extractDeltaRawValue(payload) {
   return null;
 }
 
-const client = mqtt.connect("mqtt://localhost:1883");
+var client = mqtt.connect("mqtt://localhost:1883");
 
 client.on("connect", function () {
   console.log("MQTT conectado");
@@ -450,32 +531,43 @@ client.on("connect", function () {
 
 client.on("message", function (topic, message) {
   try {
-    const parts = topic.split("/");
-    const tanque = parts[parts.length - 1];
+    var parts = topic.split("/");
+    var tanque = parts[parts.length - 1];
+    var payload;
+    var rawValue;
+    var rawUint32;
+    var sensorDistance;
+    var level;
+    var volume;
+    var percent;
 
     if (!latestSilos[tanque]) return;
 
-    const payload = JSON.parse(message.toString());
-    const rawValue = extractDeltaRawValue(payload);
+    payload = JSON.parse(message.toString());
+    rawValue = extractDeltaRawValue(payload);
 
     if (rawValue == null) return;
 
-    const rawUint32 = parseInt(rawValue, 10);
+    rawUint32 = parseInt(rawValue, 10);
     if (Number.isNaN(rawUint32)) return;
 
-    let sensorDistance = uint32ToFloatWordSwap(rawUint32);
+    sensorDistance = uint32ToFloatWordSwap(rawUint32);
 
     if (Number.isNaN(sensorDistance)) return;
     if (!Number.isFinite(sensorDistance)) return;
 
+    // Ajuste fino solicitado
     sensorDistance = sensorDistance * 0.98;
+
+    // Radar montado arriba:
+    // 0 = lleno, MAX_HEIGHT = vacío
     sensorDistance = Math.max(0, Math.min(MAX_HEIGHT, sensorDistance));
 
-    let level = MAX_HEIGHT - sensorDistance;
+    level = MAX_HEIGHT - sensorDistance;
     level = Math.max(0, Math.min(MAX_HEIGHT, level));
 
-    const volume = calculateVolume(level);
-    const percent = (level / MAX_HEIGHT) * 100;
+    volume = calculateVolume(level);
+    percent = (level / MAX_HEIGHT) * 100;
 
     latestSilos[tanque] = {
       levelMeters: level,
@@ -498,18 +590,21 @@ client.on("message", function (topic, message) {
       "level_m=" + level.toFixed(3),
       "percent=" + percent.toFixed(2)
     );
-
   } catch (error) {
     console.error("Error procesando MQTT:", error, message.toString());
   }
 });
 
+// ===== TAREAS =====
+
 setInterval(checkShift, 60000);
 setInterval(updatePersistentHistory, 60000);
 
+// ===== RUTAS =====
+
 app.get("/export-data", async function (req, res) {
   try {
-    const exportFile = await buildExportExcel();
+    var exportFile = await buildExportExcel();
     return res.download(exportFile.filePath, exportFile.fileName);
   } catch (error) {
     console.error("Error generando Excel:", error);
@@ -519,8 +614,8 @@ app.get("/export-data", async function (req, res) {
 
 app.get("/export-trend", function (req, res) {
   try {
-    const csv = buildTrendCsv();
-    const fileName = "tendencia_30_dias_" + formatDateYYYYMMDD() + ".csv";
+    var csv = buildTrendCsv();
+    var fileName = "tendencia_30_dias_" + formatDateYYYYMMDD() + ".csv";
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=" + fileName);
@@ -531,9 +626,11 @@ app.get("/export-trend", function (req, res) {
   }
 });
 
+// ===== SOCKET =====
+
 io.on("connection", function (socket) {
   socket.on("getTurnData", function () {
-    const data = readJson(TURN_FILE, {});
+    var data = readJson(TURN_FILE, {});
     socket.emit("turnData", data[today()] || {});
   });
 
@@ -543,6 +640,7 @@ io.on("connection", function (socket) {
 
   socket.on("setSiloProduct", function (payload) {
     if (!payload) return;
+
     setSiloProduct(payload.tanque, payload.product);
     io.emit("siloConfig", getSiloProducts());
   });
@@ -552,7 +650,7 @@ io.on("connection", function (socket) {
   });
 
   socket.on("getHistoryData", function (payload) {
-    const dateKey = payload && payload.date ? payload.date : today();
+    var dateKey = payload && payload.date ? payload.date : today();
 
     socket.emit("historyData", {
       date: dateKey,
@@ -561,7 +659,7 @@ io.on("connection", function (socket) {
   });
 
   socket.on("getSiloTrendData", function (payload) {
-    const dateKey = payload && payload.date ? payload.date : today();
+    var dateKey = payload && payload.date ? payload.date : today();
 
     socket.emit("siloTrendData", {
       date: dateKey,
