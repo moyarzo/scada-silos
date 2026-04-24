@@ -313,6 +313,59 @@ function updatePersistentHistory() {
   });
 }
 
+// ===== VARIACIONES DIARIAS =====
+
+function calculateDailyVariations() {
+  var history = getTodayHistory();
+  var currentTotals = getCurrentTotalsFromBackend();
+
+  var variations = {
+    "DL-5": { positive: 0, negative: 0 },
+    "VE-03": { positive: 0, negative: 0 },
+    "ASE": { positive: 0, negative: 0 }
+  };
+
+  Object.keys(variations).forEach(function (product) {
+    var arr = (history[product] || []).slice();
+
+    arr.sort(function (a, b) {
+      return String(a.time).localeCompare(String(b.time));
+    });
+
+    var current = Number(currentTotals[product] || 0);
+    var last = arr.length > 0 ? Number(arr[arr.length - 1].value) : null;
+
+    if (last == null || Number.isNaN(last)) {
+      arr.push({
+        time: getRounded5MinLabel(),
+        value: current
+      });
+    } else if (last !== current) {
+      arr.push({
+        time: getRounded5MinLabel(),
+        value: current
+      });
+    }
+
+    for (var i = 1; i < arr.length; i++) {
+      var prev = Number(arr[i - 1].value);
+      var curr = Number(arr[i].value);
+
+      if (Number.isNaN(prev) || Number.isNaN(curr)) continue;
+
+      var diff = curr - prev;
+
+      if (diff > 0) {
+        variations[product].positive += diff;
+      } else if (diff < 0) {
+        variations[product].negative += Math.abs(diff);
+      }
+    }
+  });
+
+  return variations;
+}
+
 // ===== EXPORTACIÓN CONTINUA 30 DÍAS / 24H X 5 MIN =====
 
 function getFullDay5MinLabels() {
@@ -430,7 +483,9 @@ async function buildExportExcel() {
 
   var totals = getCurrentTotalsFromBackend();
   var turn = getTodayTurnData();
+  var variations = calculateDailyVariations();
   var siloProducts = getSiloProducts();
+
   var i;
   var row;
   var tanque;
@@ -438,10 +493,12 @@ async function buildExportExcel() {
   var volume;
   var massTon;
 
+  // Totalizadores
   sheet.getCell("C4").value = Number(totals["DL-5"].toFixed(1));
   sheet.getCell("D4").value = Number(totals["ASE"].toFixed(1));
   sheet.getCell("E4").value = Number(totals["VE-03"].toFixed(1));
 
+  // Registro turno inicial
   sheet.getCell("C9").value =
     turn.start && turn.start["DL-5"] != null
       ? Number(turn.start["DL-5"].toFixed(1))
@@ -457,6 +514,7 @@ async function buildExportExcel() {
       ? Number(turn.start["VE-03"].toFixed(1))
       : "";
 
+  // Registro turno final
   sheet.getCell("C10").value =
     turn.end && turn.end["DL-5"] != null
       ? Number(turn.end["DL-5"].toFixed(1))
@@ -472,6 +530,17 @@ async function buildExportExcel() {
       ? Number(turn.end["VE-03"].toFixed(1))
       : "";
 
+  // Variación positiva
+  sheet.getCell("C11").value = Number(variations["DL-5"].positive.toFixed(1));
+  sheet.getCell("D11").value = Number(variations["ASE"].positive.toFixed(1));
+  sheet.getCell("E11").value = Number(variations["VE-03"].positive.toFixed(1));
+
+  // Variación negativa
+  sheet.getCell("C12").value = Number(variations["DL-5"].negative.toFixed(1));
+  sheet.getCell("D12").value = Number(variations["ASE"].negative.toFixed(1));
+  sheet.getCell("E12").value = Number(variations["VE-03"].negative.toFixed(1));
+
+  // Toneladas por silo
   for (i = 1; i <= 8; i++) {
     row = 14 + i;
     tanque = "tanque" + i;
