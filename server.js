@@ -251,16 +251,14 @@ function updatePersistentHistory() {
     const arr = siloHistory[day][tanque] || [];
     const lastEntry = arr[arr.length - 1];
 
-    const product = siloProducts[tanque];
-    const volume = latestSilos[tanque].volume || 0;
-    const ton = (volume * PRODUCTS[product].density) / 1000;
+    const percent = latestSilos[tanque].percent || 0;
 
     if (!lastEntry) {
-      arr.push({ time: label, value: ton });
+      arr.push({ time: label, value: percent });
     } else if (lastEntry.time !== label) {
-      arr.push({ time: label, value: ton });
+      arr.push({ time: label, value: percent });
     } else {
-      lastEntry.value = ton;
+      lastEntry.value = percent;
     }
 
     siloHistory[day][tanque] = arr;
