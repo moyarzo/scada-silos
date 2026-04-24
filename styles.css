@@ -151,7 +151,7 @@ body {
 .tank {
   background: #f9fafb;
   border: 1px solid #cbd5e1;
-  padding: 8px;
+  padding: 10px;
   text-align: center;
   border-radius: 10px;
   transition: background 0.3s ease, box-shadow 0.3s ease, border 0.3s ease;
@@ -204,7 +204,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .tank-left-panel {
@@ -318,12 +318,12 @@ body {
 }
 
 .mini-chart-container {
-  width: 135px;
-  height: 120px;
+  width: 220px;
+  height: 180px;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
-  padding: 4px;
+  padding: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -359,7 +359,6 @@ body {
   font-size: 16px;
 }
 
-/* TABLET */
 @media (max-width: 1200px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -370,7 +369,6 @@ body {
   }
 }
 
-/* MOBILE */
 @media (max-width: 768px) {
   .header {
     flex-direction: column;
@@ -493,8 +491,8 @@ body {
   }
 
   .mini-chart-container {
-    width: 120px;
-    height: 100px;
+    width: 95%;
+    height: 180px;
   }
 
   .chart-wrapper {
@@ -506,7 +504,6 @@ body {
   }
 }
 
-/* EXTRA SMALL */
 @media (max-width: 480px) {
   body {
     font-size: 14px;
@@ -541,7 +538,7 @@ body {
   }
 
   .mini-chart-container {
-    width: 110px;
-    height: 90px;
+    width: 95%;
+    height: 160px;
   }
 }
