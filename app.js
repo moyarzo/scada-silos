@@ -406,14 +406,38 @@ function updateMiniSiloCharts() {
             min: 0,
             max: FIXED_DAY_LABELS.length - 1,
             ticks: {
-              autoSkip: true,
-              maxTicksLimit: 4,
-              font: { size: 9 }
+              autoSkip: false,
+              font: { size: 9 },
+              callback: function (value) {
+                const label = this.getLabelForValue(value);
+          
+                if (label === "07:00" || label === "12:00" || label === "19:00") {
+                  return label;
+                }
+          
+                return "";
+              }
             },
             grid: {
               display: true,
-              color: "#e5e7eb",
-              lineWidth: 1
+              color: function (context) {
+                const label = context.tick && context.tick.label;
+          
+                if (label === "07:00" || label === "12:00" || label === "19:00") {
+                  return "#cbd5e1";
+                }
+          
+                return "#edf2f7";
+              },
+              lineWidth: function (context) {
+                const label = context.tick && context.tick.label;
+          
+                if (label === "07:00" || label === "12:00" || label === "19:00") {
+                  return 1.2;
+                }
+          
+                return 0.5;
+              }
             }
           },
           y: {
