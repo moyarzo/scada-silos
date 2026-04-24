@@ -51,12 +51,15 @@ const latestSilos = {
 const TURN_FILE = path.join(__dirname, "turnData.json");
 const CONFIG_FILE = path.join(__dirname, "siloConfig.json");
 const HISTORY_FILE = path.join(__dirname, "historyData.json");
+const SILO_HISTORY_FILE = path.join(__dirname, "siloHistoryData.json");
 const TEMPLATE_FILE = path.join(__dirname, "template.xlsx");
 const EXPORTS_DIR = path.join(__dirname, "exports");
 
 if (!fs.existsSync(EXPORTS_DIR)) {
   fs.mkdirSync(EXPORTS_DIR, { recursive: true });
 }
+
+// ===== ARCHIVOS =====
 
 function ensureJsonFile(filePath, defaultValue) {
   if (!fs.existsSync(filePath)) {
@@ -76,6 +79,8 @@ function readJson(filePath, fallback) {
 function writeJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
+
+// ===== CONFIG PRODUCTOS =====
 
 function getSiloProducts() {
   var cfg = readJson(CONFIG_FILE, DEFAULT_SILO_PRODUCTS);
@@ -103,6 +108,8 @@ function setSiloProduct(tanque, product) {
   cfg[tanque] = product;
   writeJson(CONFIG_FILE, cfg);
 }
+
+// ===== CÁLCULOS =====
 
 function calculateVolume(level) {
   var safeLevel = Math.max(0, Math.min(MAX_HEIGHT, level));
@@ -187,7 +194,18 @@ function getServerTime() {
   });
 }
 
-// ===== HISTORIAL =====
+function getLast30DateKeys() {
+  var dates = [];
+  var i;
+
+  for (i = 29; i >= 0; i--) {
+    dates.push(getDateKeyDaysAgo(i));
+  }
+
+  return dates;
+}
+
+// ===== HISTORIAL PRODUCTOS =====
 
 function getDefaultHistoryDay() {
   return {
@@ -197,12 +215,64 @@ function getDefaultHistoryDay() {
   };
 }
 
+function getTodayHistory() {
+  var allHistory = readJson(HISTORY_FILE, {});
+  return allHistory[today()] || getDefaultHistoryDay();
+}
+
+function getProductHistoryByDate(dateKey) {
+  var allHistory = readJson(HISTORY_FILE, {});
+  return allHistory[dateKey] || getDefaultHistoryDay();
+}
+
+function getMonthlyHistory() {
+  var allHistory = readJson(HISTORY_FILE, {});
+  var result = {};
+  var i, key;
+
+  for (i = 29; i >= 0; i--) {
+    key = getDateKeyDaysAgo(i);
+    result[key] = allHistory[key] || getDefaultHistoryDay();
+  }
+
+  return result;
+}
+
+// ===== HISTORIAL POR SILO =====
+
+function getDefaultSiloHistoryDay() {
+  return {
+    tanque1: [],
+    tanque2: [],
+    tanque3: [],
+    tanque4: [],
+    tanque5: [],
+    tanque6: [],
+    tanque7: [],
+    tanque8: []
+  };
+}
+
+function getTodaySiloHistory() {
+  var all = readJson(SILO_HISTORY_FILE, {});
+  return all[today()] || getDefaultSiloHistoryDay();
+}
+
+function getSiloHistoryByDate(dateKey) {
+  var all = readJson(SILO_HISTORY_FILE, {});
+  return all[dateKey] || getDefaultSiloHistoryDay();
+}
+
+// ===== GUARDADO HISTÓRICO =====
+
 function updatePersistentHistory() {
   var allHistory = readJson(HISTORY_FILE, {});
+  var siloHistory = readJson(SILO_HISTORY_FILE, {});
   var day = today();
   var label = getRounded5MinLabel();
   var totals = getCurrentTotalsFromBackend();
   var product, arr, lastEntry;
+  var tanque, siloArr, siloLast, siloPercent;
 
   if (!allHistory[day]) {
     allHistory[day] = getDefaultHistoryDay();
@@ -223,26 +293,38 @@ function updatePersistentHistory() {
     allHistory[day][product] = arr;
   }
 
-  writeJson(HISTORY_FILE, allHistory);
-  io.emit("historyData", getTodayHistory());
-}
-
-function getTodayHistory() {
-  var allHistory = readJson(HISTORY_FILE, {});
-  return allHistory[today()] || getDefaultHistoryDay();
-}
-
-function getMonthlyHistory() {
-  var allHistory = readJson(HISTORY_FILE, {});
-  var result = {};
-  var i, key;
-
-  for (i = 29; i >= 0; i--) {
-    key = getDateKeyDaysAgo(i);
-    result[key] = allHistory[key] || getDefaultHistoryDay();
+  if (!siloHistory[day]) {
+    siloHistory[day] = getDefaultSiloHistoryDay();
   }
 
-  return result;
+  for (tanque in latestSilos) {
+    siloArr = siloHistory[day][tanque] || [];
+    siloLast = siloArr[siloArr.length - 1];
+    siloPercent = latestSilos[tanque].percent || 0;
+
+    if (!siloLast) {
+      siloArr.push({ time: label, value: siloPercent });
+    } else if (siloLast.time !== label) {
+      siloArr.push({ time: label, value: siloPercent });
+    } else {
+      siloLast.value = siloPercent;
+    }
+
+    siloHistory[day][tanque] = siloArr;
+  }
+
+  writeJson(HISTORY_FILE, allHistory);
+  writeJson(SILO_HISTORY_FILE, siloHistory);
+
+  io.emit("historyData", {
+    date: day,
+    history: getTodayHistory()
+  });
+
+  io.emit("siloTrendData", {
+    date: day,
+    history: getTodaySiloHistory()
+  });
 }
 
 // ===== EXPORTACIÓN CONTINUA 24H X 5 MIN =====
@@ -280,6 +362,7 @@ function buildContinuousDaySeries(dayData, carryValues) {
       if (Object.prototype.hasOwnProperty.call(map[p], time)) {
         carryValues[p] = map[p][time];
       }
+
       row.values[p] = carryValues[p];
     });
 
@@ -405,6 +488,20 @@ function uint32ToFloatWordSwap(uintValue) {
   return swapped.readFloatBE(0);
 }
 
+function extractDeltaRawValue(payload) {
+  var key;
+
+  if (!payload || !payload.d) return null;
+
+  for (key in payload.d) {
+    if (key !== "type") {
+      return payload.d[key];
+    }
+  }
+
+  return null;
+}
+
 var client = mqtt.connect("mqtt://localhost:1883");
 
 client.on("connect", function () {
@@ -417,26 +514,22 @@ client.on("message", function (topic, message) {
     var parts = topic.split("/");
     var tanque = parts[parts.length - 1];
     var payload = JSON.parse(message.toString());
+    var rawValue;
+    var rawUint32;
+    var sensorDistance;
+    var level;
+    var volume;
+    var percent;
 
     if (!latestSilos[tanque]) return;
-    if (!payload.d) return;
 
-    var rawValue = null;
-    var key;
-
-    for (key in payload.d) {
-      if (key !== "type") {
-        rawValue = payload.d[key];
-        break;
-      }
-    }
-
+    rawValue = extractDeltaRawValue(payload);
     if (rawValue == null) return;
 
-    var rawUint32 = parseInt(rawValue, 10);
+    rawUint32 = parseInt(rawValue, 10);
     if (Number.isNaN(rawUint32)) return;
 
-    var sensorDistance = uint32ToFloatWordSwap(rawUint32);
+    sensorDistance = uint32ToFloatWordSwap(rawUint32);
 
     if (Number.isNaN(sensorDistance)) return;
     if (!Number.isFinite(sensorDistance)) return;
@@ -448,11 +541,11 @@ client.on("message", function (topic, message) {
     // 0 = lleno, MAX_HEIGHT = vacío
     sensorDistance = Math.max(0, Math.min(MAX_HEIGHT, sensorDistance));
 
-    var level = MAX_HEIGHT - sensorDistance;
+    level = MAX_HEIGHT - sensorDistance;
     level = Math.max(0, Math.min(MAX_HEIGHT, level));
 
-    var volume = calculateVolume(level);
-    var percent = (level / MAX_HEIGHT) * 100;
+    volume = calculateVolume(level);
+    percent = (level / MAX_HEIGHT) * 100;
 
     latestSilos[tanque] = {
       levelMeters: level,
@@ -531,8 +624,26 @@ io.on("connection", function (socket) {
     io.emit("siloConfig", getSiloProducts());
   });
 
-  socket.on("getHistoryData", function () {
-    socket.emit("historyData", getTodayHistory());
+  socket.on("getHistoryDates", function () {
+    socket.emit("historyDates", getLast30DateKeys());
+  });
+
+  socket.on("getHistoryData", function (payload) {
+    var dateKey = payload && payload.date ? payload.date : today();
+
+    socket.emit("historyData", {
+      date: dateKey,
+      history: getProductHistoryByDate(dateKey)
+    });
+  });
+
+  socket.on("getSiloTrendData", function (payload) {
+    var dateKey = payload && payload.date ? payload.date : today();
+
+    socket.emit("siloTrendData", {
+      date: dateKey,
+      history: getSiloHistoryByDate(dateKey)
+    });
   });
 
   socket.on("getSiloState", function () {
