@@ -373,12 +373,15 @@ function updateMiniSiloCharts() {
       data: {
         labels: FIXED_DAY_LABELS,
         datasets: [{
+          label: "% llenado",
           data: data,
           borderColor: "#111827",
           borderWidth: 2,
           pointRadius: 0,
-          fill: false,
-          tension: 0.25
+          fill: true,
+          backgroundColor: "rgba(17, 24, 39, 0.08)",
+          tension: 0.25,
+          spanGaps: false
         }]
       },
       options: {
@@ -387,11 +390,49 @@ function updateMiniSiloCharts() {
         animation: false,
         plugins: {
           legend: { display: false },
-          tooltip: { enabled: false }
+          tooltip: {
+            enabled: true,
+            callbacks: {
+              label: function (context) {
+                if (context.parsed.y == null) return "Sin dato";
+                return context.parsed.y.toFixed(1) + "%";
+              }
+            }
+          }
         },
         scales: {
-          x: { display: false },
-          y: { display: false, min: 0, max: 60 }
+          x: {
+            display: true,
+            min: 0,
+            max: FIXED_DAY_LABELS.length - 1,
+            ticks: {
+              autoSkip: true,
+              maxTicksLimit: 4,
+              font: { size: 9 }
+            },
+            grid: {
+              display: true,
+              color: "#e5e7eb",
+              lineWidth: 1
+            }
+          },
+          y: {
+            display: true,
+            min: 0,
+            max: 100,
+            ticks: {
+              stepSize: 50,
+              font: { size: 9 },
+              callback: function (value) {
+                return value + "%";
+              }
+            },
+            grid: {
+              display: true,
+              color: "#e5e7eb",
+              lineWidth: 1
+            }
+          }
         }
       }
     });
