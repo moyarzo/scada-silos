@@ -24,7 +24,12 @@ let lastMqttUpdate = "--:--:--";
 let mqttSignalOk = false;
 let lastMqttHeartbeat = 0;
 let charts = {};
+let siloMiniCharts = {};
 let demoProductsInitialized = false;
+
+let selectedHistoryDate = "";
+let availableHistoryDates = [];
+let siloTrendReal = {};
 
 let historyReal = {
   "DL-5": [],
@@ -175,6 +180,30 @@ function createGauge(percent, color) {
     </svg>
     <div class="gauge-value" style="color:${color}">${percent.toFixed(1)}%</div>
   `;
+}
+
+function renderDateSelector() {
+  const select = document.getElementById("chartDateSelect");
+  if (!select) return;
+
+  if (!availableHistoryDates.length) {
+    select.innerHTML = "";
+    return;
+  }
+
+  select.innerHTML = availableHistoryDates.map(function (dateKey) {
+    const label = dateKey === availableHistoryDates[availableHistoryDates.length - 1]
+      ? dateKey + " (Hoy)"
+      : dateKey;
+
+    return `<option value="${dateKey}" ${dateKey === selectedHistoryDate ? "selected" : ""}>${label}</option>`;
+  }).join("");
+
+  select.onchange = function () {
+    selectedHistoryDate = select.value;
+    socket.emit("getHistoryData", { date: selectedHistoryDate });
+    socket.emit("getSiloTrendData", { date: selectedHistoryDate });
+  };
 }
 
 function renderTopPanel() {
@@ -355,6 +384,67 @@ function updateCharts() {
   });
 }
 
+function destroyMiniCharts() {
+  Object.keys(siloMiniCharts).forEach(function (id) {
+    if (siloMiniCharts[id]) {
+      siloMiniCharts[id].destroy();
+    }
+  });
+  siloMiniCharts = {};
+}
+
+function updateMiniSiloCharts() {
+  if (mode !== "real") {
+    destroyMiniCharts();
+    return;
+  }
+
+  Object.keys(realTanks).forEach(function (id) {
+    const canvas = document.getElementById("mini-" + id);
+    if (!canvas) return;
+
+    const data = buildFixedSeries(siloTrendReal[id] || []);
+
+    if (siloMiniCharts[id]) {
+      siloMiniCharts[id].data.datasets[0].data = data;
+      siloMiniCharts[id].update();
+      return;
+    }
+
+    siloMiniCharts[id] = new Chart(canvas.getContext("2d"), {
+      type: "line",
+      data: {
+        labels: FIXED_DAY_LABELS,
+        datasets: [{
+          data: data,
+          borderColor: "#111827",
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false }
+        },
+        scales: {
+          x: { display: false },
+          y: {
+            display: false,
+            min: 0,
+            max: 100
+          }
+        }
+      }
+    });
+  });
+}
+
 function renderSummary() {
   const viewTanks = getViewTanks();
   const totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
@@ -460,11 +550,17 @@ function render() {
       <h3>Silo ${id.replace("tanque", "")}</h3>
 
       <div class="tank-main">
-        <div class="tank-left-data">
-          <div>${t.levelMeters.toFixed(2)} m</div>
-          <div>${t.volume.toFixed(2)} m³</div>
-          <div class="tank-mass">${calculateMassTon(t.volume, t.product).toFixed(2)} ton</div>
-          <div>${product.density} kg/m³</div>
+        <div class="tank-left-panel">
+          <div class="tank-left-data">
+            <div>${t.levelMeters.toFixed(2)} m</div>
+            <div>${t.volume.toFixed(2)} m³</div>
+            <div class="tank-mass">${calculateMassTon(t.volume, t.product).toFixed(2)} ton</div>
+            <div>${product.density} kg/m³</div>
+          </div>
+
+          <div class="gauge-container compact-gauge">
+            ${createGauge(percent, product.color)}
+          </div>
         </div>
 
         <div class="tank-wrapper">
@@ -488,8 +584,8 @@ function render() {
             </div>
           </div>
 
-          <div class="gauge-container">
-            ${createGauge(percent, product.color)}
+          <div class="mini-chart-container">
+            <canvas id="mini-${id}"></canvas>
           </div>
         </div>
       </div>
@@ -529,6 +625,7 @@ function render() {
   updateCharts();
   renderSummary();
   updateMqttStatus();
+  updateMiniSiloCharts();
 }
 
 // REAL MQTT EN PARALELO
@@ -581,7 +678,22 @@ socket.on("siloConfig", function (config) {
   render();
 });
 
-socket.on("historyData", function (backendHistory) {
+socket.on("historyDates", function (dates) {
+  availableHistoryDates = dates || [];
+
+  if (!selectedHistoryDate && availableHistoryDates.length > 0) {
+    selectedHistoryDate = availableHistoryDates[availableHistoryDates.length - 1];
+  }
+
+  renderDateSelector();
+
+  socket.emit("getHistoryData", { date: selectedHistoryDate });
+  socket.emit("getSiloTrendData", { date: selectedHistoryDate });
+});
+
+socket.on("historyData", function (payload) {
+  const backendHistory = payload && payload.history ? payload.history : payload;
+
   historyReal = {
     "DL-5": backendHistory && backendHistory["DL-5"] ? backendHistory["DL-5"] : [],
     "VE-03": backendHistory && backendHistory["VE-03"] ? backendHistory["VE-03"] : [],
@@ -591,10 +703,17 @@ socket.on("historyData", function (backendHistory) {
   if (mode === "real") render();
 });
 
+socket.on("siloTrendData", function (payload) {
+  siloTrendReal = payload && payload.history ? payload.history : {};
+  updateMiniSiloCharts();
+});
+
 function requestRealData() {
   socket.emit("getTurnData");
   socket.emit("getSiloConfig");
-  socket.emit("getHistoryData");
+  socket.emit("getHistoryDates");
+  socket.emit("getHistoryData", { date: selectedHistoryDate });
+  socket.emit("getSiloTrendData", { date: selectedHistoryDate });
   socket.emit("getSiloState");
 }
 
@@ -627,7 +746,6 @@ setInterval(function () {
     return;
   }
 
-  // si pasan más de 5 minutos sin dato, marcar sin señal
   if (Date.now() - lastMqttHeartbeat > 300000) {
     mqttSignalOk = false;
     updateMqttStatus();
@@ -637,7 +755,11 @@ setInterval(function () {
 document.querySelectorAll('input[name="mode"]').forEach(function (radio) {
   radio.addEventListener("change", function (e) {
     mode = e.target.value;
-    if (mode === "real") requestRealData();
+
+    if (mode === "real") {
+      requestRealData();
+    }
+
     render();
   });
 });
@@ -648,9 +770,12 @@ document.getElementById("exportTrendBtn").addEventListener("click", exportTrend)
 window.addEventListener("resize", function () {
   initCharts();
   updateCharts();
+  destroyMiniCharts();
+  updateMiniSiloCharts();
 });
 
 requestRealData();
+renderDateSelector();
 renderTopPanel();
 initCharts();
 render();
