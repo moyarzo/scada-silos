@@ -88,12 +88,14 @@ function getRounded5MinLabel() {
 
 function getFixedDayLabels() {
   const labels = [];
+
   for (let h = 7; h <= 19; h++) {
     for (let m = 0; m < 60; m += 5) {
       if (h === 19 && m > 0) break;
       labels.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
     }
   }
+
   return labels;
 }
 
@@ -101,6 +103,7 @@ const FIXED_DAY_LABELS = getFixedDayLabels();
 
 function buildFixedSeries(historyArray) {
   const map = {};
+
   historyArray.forEach(function (item) {
     map[item.time] = item.value;
   });
@@ -108,6 +111,14 @@ function buildFixedSeries(historyArray) {
   return FIXED_DAY_LABELS.map(function (label) {
     return Object.prototype.hasOwnProperty.call(map, label) ? map[label] : null;
   });
+}
+
+function getViewTanks() {
+  return mode === "real" ? realTanks : demoTanks;
+}
+
+function getViewHistory() {
+  return mode === "real" ? historyReal : historyDemo;
 }
 
 function getActiveProducts() {
@@ -121,14 +132,6 @@ function getActiveProducts() {
   return PRODUCT_ORDER.filter(function (product) {
     return active.has(product);
   });
-}
-
-function getViewTanks() {
-  return mode === "real" ? realTanks : demoTanks;
-}
-
-function getViewHistory() {
-  return mode === "real" ? historyReal : historyDemo;
 }
 
 function setProductForCurrentMode(tanque, product) {
@@ -208,12 +211,15 @@ function renderDateSelector() {
 
 function renderTopPanel() {
   const topPanel = document.getElementById("topPanel");
+  if (!topPanel) return;
+
   const activeProducts = getActiveProducts();
 
   topPanel.style.gridTemplateColumns = `repeat(${activeProducts.length || 1}, minmax(0, 1fr))`;
 
   topPanel.innerHTML = activeProducts.map(function (product) {
     const safeId = product.replace(/[^a-zA-Z0-9]/g, "");
+
     return `
       <div class="panel-card">
         <div id="summary-${safeId}" class="summary-card"></div>
@@ -289,6 +295,7 @@ function initCharts() {
   Object.keys(charts).forEach(function (key) {
     charts[key].destroy();
   });
+
   charts = {};
 
   const activeProducts = getActiveProducts();
@@ -390,6 +397,7 @@ function destroyMiniCharts() {
       siloMiniCharts[id].destroy();
     }
   });
+
   siloMiniCharts = {};
 }
 
@@ -403,13 +411,8 @@ function updateMiniSiloCharts() {
     const canvas = document.getElementById("mini-" + id);
     if (!canvas) return;
 
-    const data = buildFixedSeries(siloTrendReal[id] || []);
-
-    if (siloMiniCharts[id]) {
-      siloMiniCharts[id].data.datasets[0].data = data;
-      siloMiniCharts[id].update();
-      return;
-    }
+    const history = siloTrendReal[id] || [];
+    const data = buildFixedSeries(history);
 
     siloMiniCharts[id] = new Chart(canvas.getContext("2d"), {
       type: "line",
@@ -421,7 +424,7 @@ function updateMiniSiloCharts() {
           borderWidth: 2,
           pointRadius: 0,
           fill: false,
-          tension: 0.2
+          tension: 0.25
         }]
       },
       options: {
@@ -433,7 +436,9 @@ function updateMiniSiloCharts() {
           tooltip: { enabled: false }
         },
         scales: {
-          x: { display: false },
+          x: {
+            display: false
+          },
           y: {
             display: false,
             min: 0,
@@ -520,6 +525,11 @@ function exportTrend() {
 function render() {
   const viewTanks = getViewTanks();
   const grid = document.getElementById("grid");
+
+  if (!grid) return;
+
+  destroyMiniCharts();
+
   grid.innerHTML = "";
 
   Object.keys(viewTanks).forEach(function (id) {
@@ -645,6 +655,7 @@ socket.on("nivel", function (data) {
 socket.on("siloState", function (backendState) {
   Object.keys(backendState || {}).forEach(function (tanque) {
     if (!realTanks[tanque]) return;
+
     realTanks[tanque] = {
       levelMeters: backendState[tanque].levelMeters || 0,
       volume: backendState[tanque].volume || 0,
@@ -705,7 +716,10 @@ socket.on("historyData", function (payload) {
 
 socket.on("siloTrendData", function (payload) {
   siloTrendReal = payload && payload.history ? payload.history : {};
-  updateMiniSiloCharts();
+
+  if (mode === "real") {
+    render();
+  }
 });
 
 function requestRealData() {
