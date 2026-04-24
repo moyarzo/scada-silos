@@ -542,12 +542,12 @@ async function buildExportExcel() {
 
   // Toneladas por silo
   for (i = 1; i <= 8; i++) {
-    row = 14 + i;
+    row = 16 + i; // Silo 1 = fila 17, Silo 8 = fila 24
     tanque = "tanque" + i;
     product = siloProducts[tanque];
     volume = latestSilos[tanque] ? latestSilos[tanque].volume || 0 : 0;
     massTon = (volume * PRODUCTS[product].density) / 1000;
-
+  
     sheet.getCell("C" + row).value = product;
     sheet.getCell("D" + row).value = Number(massTon.toFixed(2));
   }
