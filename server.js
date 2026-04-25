@@ -698,9 +698,14 @@ app.get("/export-trend", function (req, res) {
 // ===== SOCKET =====
 
 io.on("connection", function (socket) {
-  socket.on("getTurnData", function () {
+  socket.on("getTurnData", function (payload) {
     var data = readJson(TURN_FILE, {});
-    socket.emit("turnData", data[today()] || {});
+    var dateKey = payload && payload.date ? payload.date : today();
+
+    socket.emit("turnData", {
+      date: dateKey,
+      data: data[dateKey] || {}
+    });
   });
 
   socket.on("getSiloConfig", function () {
