@@ -17,7 +17,8 @@ const PRODUCTS = {
 };
 
 let mode = "real";
-let turnData = {};
+let turnData = {};           // Turno del día actual (en vivo)
+let historyTurnData = {};    // Turno de la fecha seleccionada (histórico)
 let charts = {};
 let siloMiniCharts = {};
 let selectedHistoryDate = "";
@@ -32,6 +33,10 @@ let lastMqttHeartbeat = 0;
 let historyReal = { "DL-5": [], "VE-03": [], "ASE": [] };
 let historyDemo = { "DL-5": [], "VE-03": [], "ASE": [] };
 
+// Totales calculados a partir del historial de la fecha seleccionada
+// (máximo valor del día = estimación del stock en ese día)
+let historyTotals = null;
+
 const realTanks = {};
 const demoTanks = {};
 
@@ -42,6 +47,8 @@ for (let i = 1; i <= 8; i++) {
   realTanks[id] = { levelMeters: 0, volume: 0, percent: 0, product: defaultProduct };
   demoTanks[id] = { levelMeters: 0, volume: 0, percent: 0, product: defaultProduct };
 }
+
+// ===== CÁLCULOS =====
 
 function calculateVolume(level) {
   const safeLevel = Math.max(0, Math.min(MAX_HEIGHT, level));
@@ -85,6 +92,20 @@ function buildFixedSeries(historyArray) {
   });
 }
 
+// ===== HELPERS =====
+
+function getTodayKey() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function isSelectedDateToday() {
+  return selectedHistoryDate === getTodayKey() || selectedHistoryDate === "";
+}
+
 function getViewTanks() {
   return mode === "real" ? realTanks : demoTanks;
 }
@@ -116,6 +137,8 @@ function setProductForCurrentMode(tanque, product) {
   }
 }
 
+// ===== MQTT STATUS =====
+
 function updateMqttStatus() {
   const el = document.getElementById("mqttStatus");
   if (!el) return;
@@ -124,6 +147,8 @@ function updateMqttStatus() {
     ? `🟢 MQTT Activo (${lastMqttUpdate})`
     : `🔴 Sin señal (${lastMqttUpdate})`;
 }
+
+// ===== GAUGE =====
 
 function createGauge(percent, color) {
   const radius = 55;
@@ -153,6 +178,8 @@ function createGauge(percent, color) {
   `;
 }
 
+// ===== DATE SELECTOR =====
+
 function renderDateSelector() {
   const select = document.getElementById("chartDateSelect");
   if (!select) return;
@@ -162,10 +189,10 @@ function renderDateSelector() {
     return;
   }
 
-  const lastDate = availableHistoryDates[availableHistoryDates.length - 1];
+  const todayKey = getTodayKey();
 
   select.innerHTML = availableHistoryDates.map(function (dateKey) {
-    const label = dateKey === lastDate ? dateKey + " (Hoy)" : dateKey;
+    const label = dateKey === todayKey ? dateKey + " (Hoy)" : dateKey;
     return `<option value="${dateKey}" ${dateKey === selectedHistoryDate ? "selected" : ""}>${label}</option>`;
   }).join("");
 
@@ -173,8 +200,12 @@ function renderDateSelector() {
     selectedHistoryDate = select.value;
     socket.emit("getHistoryData", { date: selectedHistoryDate });
     socket.emit("getSiloTrendData", { date: selectedHistoryDate });
+    // Solicitar datos de turno para la fecha seleccionada
+    socket.emit("getTurnData", { date: selectedHistoryDate });
   };
 }
+
+// ===== TOP PANEL =====
 
 function renderTopPanel() {
   const topPanel = document.getElementById("topPanel");
@@ -195,6 +226,8 @@ function renderTopPanel() {
     `;
   }).join("");
 }
+
+// ===== TREND MARKER PLUGIN =====
 
 const trendMarkerPlugin = {
   id: "trendMarkerPlugin",
@@ -248,6 +281,8 @@ const trendMarkerPlugin = {
     ctx.restore();
   }
 };
+
+// ===== CHARTS =====
 
 function getYAxisConfig(product) {
   if (product === "DL-5") return { min: 0, max: 420, stepSize: 50 };
@@ -346,6 +381,8 @@ function updateCharts() {
   });
 }
 
+// ===== MINI SILO CHARTS =====
+
 function destroyMiniCharts() {
   Object.keys(siloMiniCharts).forEach(function (id) {
     if (siloMiniCharts[id]) {
@@ -410,11 +447,11 @@ function updateMiniSiloCharts() {
               font: { size: 9 },
               callback: function (value) {
                 const label = this.getLabelForValue(value);
-          
+
                 if (label === "07:00" || label === "12:00" || label === "19:00") {
                   return label;
                 }
-          
+
                 return "";
               }
             },
@@ -422,20 +459,20 @@ function updateMiniSiloCharts() {
               display: true,
               color: function (context) {
                 const label = context.tick && context.tick.label;
-          
+
                 if (label === "07:00" || label === "12:00" || label === "19:00") {
                   return "#cbd5e1";
                 }
-          
+
                 return "#edf2f7";
               },
               lineWidth: function (context) {
                 const label = context.tick && context.tick.label;
-          
+
                 if (label === "07:00" || label === "12:00" || label === "19:00") {
                   return 1.2;
                 }
-          
+
                 return 0.5;
               }
             }
@@ -463,7 +500,30 @@ function updateMiniSiloCharts() {
   });
 }
 
-function renderSummary() {
+// ===== SUMMARY (CUADROS DE RESUMEN POR FECHA) =====
+
+/**
+ * Calcula el totalizador del producto a partir del historial de la fecha seleccionada.
+ * Usa el último valor registrado del día como representación del stock de ese día.
+ */
+function computeHistoryTotals(historyForDate) {
+  const totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
+
+  PRODUCT_ORDER.forEach(function (product) {
+    const arr = historyForDate[product] || [];
+    if (arr.length > 0) {
+      // Último valor registrado del día = stock al cierre del turno
+      totals[product] = Number(arr[arr.length - 1].value) || 0;
+    }
+  });
+
+  return totals;
+}
+
+/**
+ * Calcula el totalizador en tiempo real (modo real, día actual).
+ */
+function computeLiveTotals() {
   const viewTanks = getViewTanks();
   const totals = { "DL-5": 0, "VE-03": 0, "ASE": 0 };
 
@@ -472,8 +532,47 @@ function renderSummary() {
     totals[t.product] += calculateMassTon(t.volume, t.product);
   });
 
-  const start = turnData.start || {};
-  const end = turnData.end || {};
+  return totals;
+}
+
+/**
+ * renderSummary — actualiza los cuadros de resumen según la fecha seleccionada.
+ *
+ * Lógica:
+ *  - Si la fecha seleccionada es HOY (o no hay fecha): muestra totales en tiempo real
+ *    + registro de turno 07h / 19h del día actual.
+ *  - Si la fecha seleccionada es un día HISTÓRICO: muestra el último totalizador
+ *    registrado en ese día + registro de turno 07h / 19h de esa fecha.
+ */
+function renderSummary() {
+  const isToday = isSelectedDateToday();
+
+  // Totales a mostrar
+  let totals;
+  if (mode === "demo") {
+    totals = computeLiveTotals();
+  } else if (isToday) {
+    totals = computeLiveTotals();
+  } else {
+    // Día histórico: usar último valor del historial de esa fecha
+    totals = historyTotals || computeHistoryTotals(historyReal);
+  }
+
+  // Datos de turno a mostrar
+  // historyTurnData se actualiza al cambiar fecha (evento "turnData" con date)
+  // turnData (sin prefijo) es el turno del día actual en vivo
+  const activeTurn = (mode === "real" && !isToday) ? historyTurnData : turnData;
+  const start = activeTurn.start || activeTurn.data
+    ? (activeTurn.data ? (activeTurn.data.start || {}) : (activeTurn.start || {}))
+    : {};
+  const end = activeTurn.end || activeTurn.data
+    ? (activeTurn.data ? (activeTurn.data.end || {}) : (activeTurn.end || {}))
+    : {};
+
+  // Etiqueta de fecha para el encabezado del cuadro
+  const dateLabel = isToday
+    ? "Hoy"
+    : (selectedHistoryDate || getTodayKey());
 
   Object.keys(charts).forEach(function (product) {
     const safeId = product.replace(/[^a-zA-Z0-9]/g, "");
@@ -483,15 +582,17 @@ function renderSummary() {
     if (mode === "real") {
       el.innerHTML = `
         <div style="background:${PRODUCTS[product].color}; padding:8px; border-radius:8px;">
-          ${product}<br>
+          <strong>${product}</strong> &mdash; <span style="font-size:0.85em; opacity:0.9">${dateLabel}</span><br>
           <strong>Totalizador:</strong> ${totals[product].toFixed(1)} ton<br>
-          <strong>Registro turno:</strong> 07: ${start[product] != null ? Number(start[product]).toFixed(1) : "-"} | 19: ${end[product] != null ? Number(end[product]).toFixed(1) : "-"}
+          <strong>Registro turno:</strong>
+          07h: ${start[product] != null ? Number(start[product]).toFixed(1) : "-"} ton |
+          19h: ${end[product] != null ? Number(end[product]).toFixed(1) : "-"} ton
         </div>
       `;
     } else {
       el.innerHTML = `
         <div style="background:${PRODUCTS[product].color}; padding:8px; border-radius:8px;">
-          ${product}<br>
+          <strong>${product}</strong><br>
           <strong>Totalizador:</strong> ${totals[product].toFixed(1)} ton<br>
           <strong>Modo:</strong> Demo
         </div>
@@ -500,9 +601,13 @@ function renderSummary() {
   });
 }
 
+// ===== SILO PRODUCT CONFIG =====
+
 function saveSiloProductConfig(id, product) {
   socket.emit("setSiloProduct", { tanque: id, product: product });
 }
+
+// ===== DEMO HISTORY =====
 
 function updateDemoHistory() {
   const label = getRounded5MinLabel();
@@ -527,6 +632,8 @@ function updateDemoHistory() {
   });
 }
 
+// ===== EXPORT =====
+
 function exportData() {
   window.location.href = "/export-data";
 }
@@ -534,6 +641,8 @@ function exportData() {
 function exportTrend() {
   window.location.href = "/export-trend";
 }
+
+// ===== RENDER PRINCIPAL =====
 
 function render() {
   const viewTanks = getViewTanks();
@@ -649,6 +758,8 @@ function render() {
   updateMiniSiloCharts();
 }
 
+// ===== SOCKET EVENTS =====
+
 socket.on("nivel", function (data) {
   if (!data) return;
 
@@ -678,8 +789,21 @@ socket.on("siloState", function (backendState) {
 });
 
 socket.on("turnData", function (data) {
-  turnData = data || {};
-  if (mode === "real") render();
+  if (!data) return;
+
+  // El servidor envía { date, data: { start, end } } cuando se consulta por fecha
+  // o el formato antiguo { start, end } para el día en vivo
+  const isHistorical = data.date && data.date !== getTodayKey();
+
+  if (isHistorical) {
+    // Guardar turno histórico de la fecha seleccionada
+    historyTurnData = data;
+  } else {
+    // Turno del día actual (en vivo o hoy)
+    turnData = data.data ? data.data : data;
+  }
+
+  if (mode === "real") renderSummary();
 });
 
 socket.on("siloConfig", function (config) {
@@ -710,6 +834,7 @@ socket.on("historyDates", function (dates) {
 
   socket.emit("getHistoryData", { date: selectedHistoryDate });
   socket.emit("getSiloTrendData", { date: selectedHistoryDate });
+  socket.emit("getTurnData", { date: selectedHistoryDate });
 });
 
 socket.on("historyData", function (payload) {
@@ -725,6 +850,9 @@ socket.on("historyData", function (payload) {
     "ASE": backendHistory && backendHistory["ASE"] ? backendHistory["ASE"] : []
   };
 
+  // Recalcular totales históricos a partir del nuevo historial recibido
+  historyTotals = computeHistoryTotals(historyReal);
+
   if (mode === "real") render();
 });
 
@@ -738,14 +866,18 @@ socket.on("siloTrendData", function (payload) {
   if (mode === "real") render();
 });
 
+// ===== SOLICITUD INICIAL DE DATOS =====
+
 function requestRealData() {
-  socket.emit("getTurnData");
+  socket.emit("getTurnData", { date: getTodayKey() });
   socket.emit("getSiloConfig");
   socket.emit("getHistoryDates");
   socket.emit("getHistoryData", { date: selectedHistoryDate });
   socket.emit("getSiloTrendData", { date: selectedHistoryDate });
   socket.emit("getSiloState");
 }
+
+// ===== DEMO INTERVAL =====
 
 setInterval(function () {
   Object.keys(demoTanks).forEach(function (id) {
@@ -767,6 +899,8 @@ setInterval(function () {
   if (mode === "demo") render();
 }, 2000);
 
+// ===== MQTT WATCHDOG =====
+
 setInterval(function () {
   if (!lastMqttHeartbeat) {
     mqttSignalOk = false;
@@ -779,6 +913,8 @@ setInterval(function () {
     updateMqttStatus();
   }
 }, 1000);
+
+// ===== EVENT LISTENERS =====
 
 document.querySelectorAll('input[name="mode"]').forEach(function (radio) {
   radio.addEventListener("change", function (e) {
@@ -802,6 +938,8 @@ window.addEventListener("resize", function () {
   destroyMiniCharts();
   updateMiniSiloCharts();
 });
+
+// ===== INIT =====
 
 requestRealData();
 renderDateSelector();
