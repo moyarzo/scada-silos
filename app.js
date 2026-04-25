@@ -1,196 +1,147 @@
 /* ==========================================================
-   SCADA SILOS - app.js
-   Compatible con index.html actual
+   APP.JS - SCADA SILOS
+   Sistema Monitoreo Planta Los Bronces – Silos de Matriz
    ========================================================== */
 
 const socket = io();
 
-const SILOS = 8;
-
-const PRODUCTOS = {
-  "DL-5": { densidad: 1300, color: "#2f80ed", maxTon: 420 },
-  "VE-03": { densidad: 1370, color: "#9b51e0", maxTon: 60 },
-  "ASE": { densidad: 800, color: "#27ae60", maxTon: 40 }
+const PRODUCTS = {
+  "DL-5": {
+    density: 1300,
+    color: "#2f80ed",
+    soft: "rgba(47,128,237,0.18)",
+    yMax: 420
+  },
+  "VE-03": {
+    density: 1370,
+    color: "#9b51e0",
+    soft: "rgba(155,81,224,0.18)",
+    yMax: 60
+  },
+  "ASE": {
+    density: 800,
+    color: "#27ae60",
+    soft: "rgba(39,174,96,0.18)",
+    yMax: 40
+  }
 };
 
-const ALTURA_CONO = 1.67;
-const ALTURA_CILINDRO = 4.25;
-const ALTURA_TOTAL = ALTURA_CONO + ALTURA_CILINDRO;
-const VOLUMEN_TOTAL = 46.168;
+const SILO_COUNT = 8;
 
-let modo = "real";
-let estadoSilos = {};
-let productosSilos = {};
+const CONE_HEIGHT = 1.67;
+const CYLINDER_HEIGHT = 4.25;
+const MAX_HEIGHT = CONE_HEIGHT + CYLINDER_HEIGHT;
+
+const TOTAL_VOLUME = 46.168;
+
+const SHIFT_START = "07:00";
+const SHIFT_END = "19:00";
+
+let currentMode = "demo";
+let selectedDate = getTodayDate();
+let latestSilos = {};
+let productAssignments = {};
 let charts = {};
-let demoInterval = null;
-let fechaSeleccionada = fechaHoy();
+let historicalByDate = {};
+let demoTimer = null;
 
 /* ==========================================================
    INICIO
    ========================================================== */
 
 document.addEventListener("DOMContentLoaded", () => {
-  inicializarProductos();
-  crearPanelSuperior();
-  crearTarjetasYGraficos();
-  inicializarEventos();
-  inicializarGraficos();
-  cargarFechasGraficos();
+  initDefaultAssignments();
+  bindUI();
+  initCharts();
+  requestInitialData();
 
-  socket.emit("request-current-state");
-  socket.emit("request-product-assignments");
-  cargarHistoricoFecha(fechaSeleccionada);
+  if (currentMode === "demo") {
+    startDemoMode();
+  }
 });
 
 /* ==========================================================
-   CREACIÓN HTML DINÁMICA
+   UI
    ========================================================== */
 
-function crearPanelSuperior() {
-  const topPanel = document.getElementById("topPanel");
-  if (!topPanel) return;
+function bindUI() {
+  const modeSelector = document.getElementById("modeSelector");
+  const dateSelector = document.getElementById("dateSelector");
+  const downloadDataBtn = document.getElementById("downloadData");
+  const downloadTrendBtn = document.getElementById("downloadTrend");
 
-  topPanel.innerHTML = "";
+  if (modeSelector) {
+    modeSelector.value = currentMode;
 
-  Object.keys(PRODUCTOS).forEach(producto => {
-    const div = document.createElement("div");
-    div.className = "summary-card";
-    div.id = `summaryCard-${idProducto(producto)}`;
+    modeSelector.addEventListener("change", () => {
+      currentMode = modeSelector.value;
 
-    div.innerHTML = `
-      <h3>${producto}</h3>
-      <div class="summary-line" id="total-${idProducto(producto)}">
-        Totalizador: 0.0 ton
-      </div>
-      <div class="summary-line" id="turno-${idProducto(producto)}">
-        Registro turno: 0.0 ton
-      </div>
-    `;
-
-    topPanel.appendChild(div);
-  });
-}
-
-function crearTarjetasYGraficos() {
-  const grid = document.getElementById("grid");
-  if (!grid) return;
-
-  grid.innerHTML = "";
-
-  for (let i = 1; i <= SILOS; i++) {
-    const producto = productosSilos[i] || "DL-5";
-
-    const card = document.createElement("div");
-    card.className = "silo-card";
-    card.id = `siloCard-${i}`;
-
-    card.innerHTML = `
-      <div class="silo-header">
-        <h2>Silo ${i}</h2>
-
-        <select class="product-select" id="productoSilo-${i}">
-          <option value="DL-5">DL-5</option>
-          <option value="VE-03">VE-03</option>
-          <option value="ASE">ASE</option>
-        </select>
-      </div>
-
-      <div class="silo-body">
-        <div class="silo">
-          <div class="silo-fill" id="fill-${i}"></div>
-          <div class="silo-percent" id="percent-${i}">0%</div>
-        </div>
-
-        <div class="silo-info">
-          <p><strong>Producto:</strong> <span id="productoLabel-${i}">${producto}</span></p>
-          <p><strong>Densidad:</strong> <span id="densidad-${i}">${PRODUCTOS[producto].densidad}</span> kg/m³</p>
-          <p><strong>Toneladas:</strong> <span id="tons-${i}">0.0</span> ton</p>
-          <p><strong>Nivel:</strong> <span id="nivel-${i}">0.00</span> m</p>
-        </div>
-      </div>
-    `;
-
-    grid.appendChild(card);
-
-    const select = document.getElementById(`productoSilo-${i}`);
-    if (select) select.value = producto;
-  }
-
-  Object.keys(PRODUCTOS).forEach(producto => {
-    const chartBox = document.createElement("div");
-    chartBox.className = "chart-box";
-    chartBox.id = `chartBox-${idProducto(producto)}`;
-
-    chartBox.innerHTML = `
-      <h2>Tendencia ${producto}</h2>
-      <div class="chart-container">
-        <canvas id="chart-${idProducto(producto)}"></canvas>
-      </div>
-    `;
-
-    grid.appendChild(chartBox);
-  });
-}
-
-/* ==========================================================
-   EVENTOS
-   ========================================================== */
-
-function inicializarEventos() {
-  document.querySelectorAll("input[name='mode']").forEach(radio => {
-    radio.addEventListener("change", e => {
-      modo = e.target.value;
-
-      if (modo === "demo") {
-        iniciarDemo();
+      if (currentMode === "demo") {
+        startDemoMode();
       } else {
-        detenerDemo();
+        stopDemoMode();
         socket.emit("request-current-state");
       }
     });
-  });
+  }
 
-  for (let i = 1; i <= SILOS; i++) {
-    const select = document.getElementById(`productoSilo-${i}`);
+  if (dateSelector) {
+    dateSelector.value = selectedDate;
+
+    dateSelector.addEventListener("change", async () => {
+      selectedDate = dateSelector.value;
+      await loadTrendByDate(selectedDate);
+    });
+  }
+
+  if (downloadDataBtn) {
+    downloadDataBtn.addEventListener("click", () => {
+      window.location.href = `/download-data?date=${selectedDate}`;
+    });
+  }
+
+  if (downloadTrendBtn) {
+    downloadTrendBtn.addEventListener("click", () => {
+      window.location.href = `/download-trend?date=${selectedDate}`;
+    });
+  }
+
+  for (let i = 1; i <= SILO_COUNT; i++) {
+    const select = document.getElementById(`product-silo-${i}`);
 
     if (select) {
-      select.addEventListener("change", () => {
-        productosSilos[i] = select.value;
-        actualizarSilo(i);
-        actualizarResumenActual();
-        actualizarVisibilidadProductos();
+      select.value = productAssignments[i];
 
-        socket.emit("save-product-assignments", productosSilos);
+      select.addEventListener("change", () => {
+        productAssignments[i] = select.value;
+        updateSiloProductVisual(i);
+        updateAllSummariesFromCurrentState();
+        updateVisibleCharts();
+
+        socket.emit("save-product-assignments", productAssignments);
       });
     }
-  }
-
-  const chartDateSelect = document.getElementById("chartDateSelect");
-
-  if (chartDateSelect) {
-    chartDateSelect.addEventListener("change", () => {
-      fechaSeleccionada = chartDateSelect.value;
-      cargarHistoricoFecha(fechaSeleccionada);
-    });
-  }
-
-  const exportBtn = document.getElementById("exportBtn");
-  if (exportBtn) {
-    exportBtn.addEventListener("click", () => {
-      window.location.href = `/download-data?date=${fechaSeleccionada}`;
-    });
-  }
-
-  const exportTrendBtn = document.getElementById("exportTrendBtn");
-  if (exportTrendBtn) {
-    exportTrendBtn.addEventListener("click", () => {
-      window.location.href = `/download-trend`;
-    });
   }
 }
 
 /* ==========================================================
-   SOCKET
+   DATOS INICIALES
+   ========================================================== */
+
+function requestInitialData() {
+  socket.emit("request-current-state");
+  socket.emit("request-product-assignments");
+  loadTrendByDate(selectedDate);
+}
+
+function initDefaultAssignments() {
+  for (let i = 1; i <= SILO_COUNT; i++) {
+    productAssignments[i] = i === 6 ? "ASE" : "DL-5";
+  }
+}
+
+/* ==========================================================
+   SOCKET.IO
    ========================================================== */
 
 socket.on("connect", () => {
@@ -201,48 +152,66 @@ socket.on("connect", () => {
 socket.on("product-assignments", data => {
   if (!data) return;
 
-  productosSilos = { ...productosSilos, ...data };
+  productAssignments = {
+    ...productAssignments,
+    ...data
+  };
 
-  for (let i = 1; i <= SILOS; i++) {
-    const select = document.getElementById(`productoSilo-${i}`);
-    if (select) select.value = productosSilos[i] || "DL-5";
+  for (let i = 1; i <= SILO_COUNT; i++) {
+    const select = document.getElementById(`product-silo-${i}`);
 
-    actualizarSilo(i);
+    if (select) {
+      select.value = productAssignments[i];
+    }
+
+    updateSiloProductVisual(i);
   }
 
-  actualizarResumenActual();
-  actualizarVisibilidadProductos();
+  updateAllSummariesFromCurrentState();
+  updateVisibleCharts();
 });
 
 socket.on("current-state", data => {
   if (!data) return;
 
-  estadoSilos = data.silos || data;
+  latestSilos = data.silos || data || {};
 
-  actualizarTodosLosSilos();
-  actualizarResumenActual();
+  updateSilos(latestSilos);
+  updateAllSummariesFromCurrentState();
 
   if (data.lastMqttUpdate) {
-    actualizarEstadoMqtt(data.lastMqttUpdate, true);
+    updateMqttTime(data.lastMqttUpdate);
   }
 });
 
 socket.on("mqtt-update", data => {
-  if (modo !== "real") return;
+  if (currentMode !== "real") return;
   if (!data) return;
 
-  estadoSilos = { ...estadoSilos, ...data };
+  latestSilos = {
+    ...latestSilos,
+    ...data
+  };
 
-  actualizarTodosLosSilos();
-  actualizarResumenActual();
-  actualizarEstadoMqtt(new Date(), true);
+  updateSilos(latestSilos);
+  updateAllSummariesFromCurrentState();
+  updateMqttTime(new Date());
 });
 
 socket.on("trend-update", data => {
   if (!data) return;
 
-  if (data.date === fechaSeleccionada || !data.date) {
-    cargarHistoricoFecha(fechaSeleccionada);
+  const date = data.date || getTodayDate();
+
+  if (!historicalByDate[date]) {
+    historicalByDate[date] = [];
+  }
+
+  historicalByDate[date].push(data);
+
+  if (date === selectedDate) {
+    renderChartsFromHistory(historicalByDate[date]);
+    updateSummariesFromHistory(historicalByDate[date]);
   }
 });
 
@@ -250,166 +219,272 @@ socket.on("trend-update", data => {
    SILOS
    ========================================================== */
 
-function actualizarTodosLosSilos() {
-  for (let i = 1; i <= SILOS; i++) {
-    actualizarSilo(i);
+function updateSilos(silos) {
+  for (let i = 1; i <= SILO_COUNT; i++) {
+    const value = silos[i] || silos[`silo${i}`] || {};
+    const distance = Number(value.distance ?? value.distancia ?? 0);
+    const level = calculateLevelFromDistance(distance);
+    const percentage = clamp((level / MAX_HEIGHT) * 100, 0, 100);
+    const product = productAssignments[i] || "DL-5";
+    const tons = calculateTons(level, product);
+
+    updateSiloUI(i, {
+      level,
+      percentage,
+      tons,
+      product
+    });
   }
 }
 
-function actualizarSilo(i) {
-  const producto = productosSilos[i] || "DL-5";
-  const infoProducto = PRODUCTOS[producto];
+function updateSiloUI(index, data) {
+  const fill = document.getElementById(`silo-fill-${index}`);
+  const percentLabel = document.getElementById(`silo-percent-${index}`);
+  const tonsLabel = document.getElementById(`silo-tons-${index}`);
+  const densityLabel = document.getElementById(`silo-density-${index}`);
+  const productLabel = document.getElementById(`silo-product-${index}`);
+  const card = document.getElementById(`silo-card-${index}`);
 
-  const data = estadoSilos[i] || estadoSilos[`silo${i}`] || {};
-  const distancia = Number(data.distance ?? data.distancia ?? data.valor ?? 0);
+  const productInfo = PRODUCTS[data.product] || PRODUCTS["DL-5"];
 
-  const nivel = calcularNivel(distancia);
-  const porcentaje = limitar((nivel / ALTURA_TOTAL) * 100, 0, 100);
-  const toneladas = calcularToneladas(nivel, producto);
-
-  setText(`productoLabel-${i}`, producto);
-  setText(`densidad-${i}`, infoProducto.densidad);
-  setText(`tons-${i}`, toneladas.toFixed(1));
-  setText(`nivel-${i}`, nivel.toFixed(2));
-  setText(`percent-${i}`, `${porcentaje.toFixed(0)}%`);
-
-  const fill = document.getElementById(`fill-${i}`);
   if (fill) {
-    fill.style.height = `${porcentaje}%`;
-    fill.style.background = infoProducto.color;
+    fill.style.height = `${data.percentage}%`;
+    fill.style.background = productInfo.color;
   }
 
-  const percent = document.getElementById(`percent-${i}`);
-  if (percent) {
-    percent.style.color = infoProducto.color;
+  if (percentLabel) {
+    percentLabel.textContent = `${data.percentage.toFixed(0)}%`;
+    percentLabel.style.color = productInfo.color;
   }
 
-  const card = document.getElementById(`siloCard-${i}`);
+  if (tonsLabel) {
+    tonsLabel.textContent = `${data.tons.toFixed(1)} ton`;
+  }
+
+  if (densityLabel) {
+    densityLabel.textContent = `${productInfo.density} kg/m³`;
+  }
+
+  if (productLabel) {
+    productLabel.textContent = data.product;
+  }
+
   if (card) {
     card.classList.remove("alarm-yellow", "alarm-red");
 
-    if (porcentaje >= 90) {
+    if (data.percentage >= 90) {
       card.classList.add("alarm-red");
-    } else if (porcentaje >= 85) {
+    } else if (data.percentage >= 85) {
       card.classList.add("alarm-yellow");
     }
   }
+}
+
+function updateSiloProductVisual(index) {
+  const product = productAssignments[index] || "DL-5";
+  const productInfo = PRODUCTS[product];
+
+  const fill = document.getElementById(`silo-fill-${index}`);
+  const percentLabel = document.getElementById(`silo-percent-${index}`);
+  const densityLabel = document.getElementById(`silo-density-${index}`);
+  const productLabel = document.getElementById(`silo-product-${index}`);
+
+  if (fill) fill.style.background = productInfo.color;
+  if (percentLabel) percentLabel.style.color = productInfo.color;
+  if (densityLabel) densityLabel.textContent = `${productInfo.density} kg/m³`;
+  if (productLabel) productLabel.textContent = product;
+}
+
+/* ==========================================================
+   CÁLCULOS
+   ========================================================== */
+
+function calculateLevelFromDistance(distance) {
+  if (!distance || Number.isNaN(distance)) return 0;
+
+  const level = MAX_HEIGHT - distance;
+
+  return clamp(level, 0, MAX_HEIGHT);
+}
+
+function calculateVolume(level) {
+  level = clamp(level, 0, MAX_HEIGHT);
+
+  if (level <= 0) return 0;
+
+  const coneVolume = TOTAL_VOLUME * (CONE_HEIGHT / MAX_HEIGHT);
+  const cylinderVolume = TOTAL_VOLUME - coneVolume;
+
+  if (level <= CONE_HEIGHT) {
+    const ratio = level / CONE_HEIGHT;
+    return coneVolume * Math.pow(ratio, 3);
+  }
+
+  const cylinderLevel = level - CONE_HEIGHT;
+  const cylinderRatio = cylinderLevel / CYLINDER_HEIGHT;
+
+  return coneVolume + cylinderVolume * cylinderRatio;
+}
+
+function calculateTons(level, product) {
+  const volume = calculateVolume(level);
+  const density = PRODUCTS[product]?.density || PRODUCTS["DL-5"].density;
+
+  return (volume * density) / 1000;
+}
+
+function calculateCurrentProductTotals() {
+  const totals = {
+    "DL-5": 0,
+    "VE-03": 0,
+    "ASE": 0
+  };
+
+  for (let i = 1; i <= SILO_COUNT; i++) {
+    const silo = latestSilos[i] || latestSilos[`silo${i}`] || {};
+    const product = productAssignments[i] || "DL-5";
+    const distance = Number(silo.distance ?? silo.distancia ?? 0);
+    const level = calculateLevelFromDistance(distance);
+    const tons = calculateTons(level, product);
+
+    totals[product] += tons;
+  }
+
+  return totals;
 }
 
 /* ==========================================================
    RESÚMENES
    ========================================================== */
 
-function actualizarResumenActual() {
-  const totales = calcularTotalesActuales();
-  pintarResumen(totales);
+function updateAllSummariesFromCurrentState() {
+  const totals = calculateCurrentProductTotals();
+
+  updateSummaryUI(totals);
+  updateVisibleCharts();
 }
 
-function calcularTotalesActuales() {
-  const totales = crearTotalesVacios();
-
-  for (let i = 1; i <= SILOS; i++) {
-    const producto = productosSilos[i] || "DL-5";
-    const data = estadoSilos[i] || estadoSilos[`silo${i}`] || {};
-    const distancia = Number(data.distance ?? data.distancia ?? data.valor ?? 0);
-
-    const nivel = calcularNivel(distancia);
-    const toneladas = calcularToneladas(nivel, producto);
-
-    totales[producto] += toneladas;
-  }
-
-  return totales;
-}
-
-function actualizarResumenDesdeHistorico(historial) {
-  const totales = crearTotalesVacios();
-
-  if (!historial || historial.length === 0) {
-    pintarResumen(totales);
-    return;
-  }
-
-  const ultimo = historial[historial.length - 1];
-
-  Object.keys(PRODUCTOS).forEach(producto => {
-    totales[producto] = obtenerTotalProductoDesdePunto(ultimo, producto);
-  });
-
-  pintarResumen(totales);
-}
-
-function pintarResumen(totales) {
-  Object.keys(PRODUCTOS).forEach(producto => {
-    setText(
-      `total-${idProducto(producto)}`,
-      `Totalizador: ${(totales[producto] || 0).toFixed(1)} ton`
-    );
-  });
-
-  actualizarVisibilidadProductos();
-}
-
-function crearTotalesVacios() {
-  return {
+function updateSummariesFromHistory(history) {
+  const totals = {
     "DL-5": 0,
     "VE-03": 0,
     "ASE": 0
   };
+
+  if (!history || !history.length) {
+    updateSummaryUI(totals);
+    return;
+  }
+
+  const lastPoint = history[history.length - 1];
+
+  if (lastPoint.products) {
+    Object.keys(totals).forEach(product => {
+      totals[product] = Number(lastPoint.products[product] || 0);
+    });
+  } else if (lastPoint.silos) {
+    for (let i = 1; i <= SILO_COUNT; i++) {
+      const siloData = lastPoint.silos[i] || lastPoint.silos[`silo${i}`];
+
+      if (!siloData) continue;
+
+      const product = siloData.product || productAssignments[i] || "DL-5";
+      const tons = Number(siloData.tons ?? siloData.toneladas ?? 0);
+
+      if (totals[product] !== undefined) {
+        totals[product] += tons;
+      }
+    }
+  }
+
+  updateSummaryUI(totals);
+}
+
+function updateSummaryUI(totals) {
+  Object.keys(PRODUCTS).forEach(product => {
+    const safeId = normalizeProductId(product);
+
+    const totalEl = document.getElementById(`summary-${safeId}`);
+    const cardEl = document.getElementById(`summary-card-${safeId}`);
+
+    if (totalEl) {
+      totalEl.textContent = `Totalizador: ${Number(totals[product] || 0).toFixed(1)} ton`;
+    }
+
+    if (cardEl) {
+      const hasProduct = hasAnySiloWithProduct(product);
+      cardEl.style.display = hasProduct ? "" : "none";
+    }
+  });
 }
 
 /* ==========================================================
    GRÁFICOS
    ========================================================== */
 
-function inicializarGraficos() {
-  Object.keys(PRODUCTOS).forEach(producto => {
-    const canvas = document.getElementById(`chart-${idProducto(producto)}`);
+function initCharts() {
+  Object.keys(PRODUCTS).forEach(product => {
+    const canvas = document.getElementById(`chart-${normalizeProductId(product)}`);
+
     if (!canvas) return;
 
-    charts[producto] = new Chart(canvas, {
+    const ctx = canvas.getContext("2d");
+
+    charts[product] = new Chart(ctx, {
       type: "line",
       data: {
         labels: [],
-        datasets: [{
-          label: producto,
-          data: [],
-          borderColor: "#000",
-          backgroundColor: colorSuave(PRODUCTOS[producto].color),
-          fill: true,
-          tension: 0.35,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          pointBackgroundColor: [],
-          pointStyle: []
-        }]
+        datasets: [
+          {
+            label: product,
+            data: [],
+            borderColor: "#000000",
+            backgroundColor: PRODUCTS[product].soft,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: "#000000",
+            pointBorderColor: "#000000"
+          }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: {
+          duration: 500
+        },
         plugins: {
-          legend: { display: true },
-          zoom: {
-            zoom: {
-              wheel: { enabled: true },
-              pinch: { enabled: true },
-              mode: "x"
-            },
-            pan: {
-              enabled: true,
-              mode: "x"
+          legend: {
+            display: true
+          },
+          tooltip: {
+            callbacks: {
+              label: context => `${product}: ${context.raw.toFixed(1)} ton`
             }
           }
         },
         scales: {
           x: {
-            grid: { display: true }
+            min: SHIFT_START,
+            max: SHIFT_END,
+            grid: {
+              display: true
+            },
+            ticks: {
+              autoSkip: true,
+              maxTicksLimit: 12
+            }
           },
           y: {
             min: 0,
-            max: PRODUCTOS[producto].maxTon,
+            max: PRODUCTS[product].yMax,
             ticks: {
               callback: value => `${value} t`
+            },
+            grid: {
+              display: true
             }
           }
         }
@@ -417,341 +492,340 @@ function inicializarGraficos() {
     });
   });
 
-  actualizarVisibilidadProductos();
+  updateVisibleCharts();
 }
 
-async function cargarHistoricoFecha(fecha) {
+async function loadTrendByDate(date) {
   try {
-    const res = await fetch(`/api/trend?date=${fecha}`);
+    const response = await fetch(`/api/trend?date=${date}`);
 
-    if (!res.ok) throw new Error("No se pudo cargar tendencia");
+    if (!response.ok) {
+      throw new Error("No se pudo cargar la tendencia");
+    }
 
-    const data = await res.json();
-    const historial = Array.isArray(data) ? data : (data.history || data.trend || []);
+    const data = await response.json();
 
-    pintarGraficos(historial);
-    actualizarResumenDesdeHistorico(historial);
+    const history = Array.isArray(data)
+      ? data
+      : data.history || data.trend || [];
+
+    historicalByDate[date] = history;
+
+    renderChartsFromHistory(history);
+    updateSummariesFromHistory(history);
   } catch (error) {
-    console.error("Error cargando histórico:", error);
+    console.error(error);
 
-    pintarGraficos([]);
-    actualizarResumenDesdeHistorico([]);
+    historicalByDate[date] = [];
+
+    renderChartsFromHistory([]);
+    updateSummariesFromHistory([]);
   }
 }
 
-function pintarGraficos(historial) {
+function renderChartsFromHistory(history) {
+  const series = {
+    "DL-5": [],
+    "VE-03": [],
+    "ASE": []
+  };
+
   const labels = [];
-  const series = crearTotalesVacios();
 
-  Object.keys(series).forEach(producto => {
-    series[producto] = [];
-  });
+  if (history && history.length) {
+    history.forEach(point => {
+      const time = point.time || point.hora || extractTime(point.timestamp);
 
-  historial.forEach(punto => {
-    const hora = punto.time || punto.hora || obtenerHora(punto.timestamp);
+      if (!time) return;
 
-    labels.push(hora);
+      labels.push(time);
 
-    Object.keys(PRODUCTOS).forEach(producto => {
-      series[producto].push(obtenerTotalProductoDesdePunto(punto, producto));
+      Object.keys(PRODUCTS).forEach(product => {
+        let value = 0;
+
+        if (point.products) {
+          value = Number(point.products[product] || 0);
+        } else if (point.totals) {
+          value = Number(point.totals[product] || 0);
+        } else if (point.silos) {
+          value = calculateProductTotalFromPoint(point, product);
+        }
+
+        series[product].push(value);
+      });
     });
-  });
+  }
 
-  Object.keys(PRODUCTOS).forEach(producto => {
-    const chart = charts[producto];
+  Object.keys(PRODUCTS).forEach(product => {
+    const chart = charts[product];
+
     if (!chart) return;
 
     chart.data.labels = labels;
-    chart.data.datasets[0].data = series[producto];
-    chart.data.datasets[0].pointBackgroundColor = coloresPuntos(series[producto]);
-    chart.data.datasets[0].pointStyle = estilosPuntos(series[producto]);
+    chart.data.datasets[0].data = series[product];
+    chart.data.datasets[0].pointBackgroundColor = buildPointColors(series[product]);
+    chart.data.datasets[0].pointStyle = buildPointStyles(series[product]);
 
     chart.update();
   });
 
-  actualizarVisibilidadProductos();
+  updateVisibleCharts();
 }
 
-function obtenerTotalProductoDesdePunto(punto, producto) {
-  if (!punto) return 0;
+function calculateProductTotalFromPoint(point, product) {
+  let total = 0;
 
-  if (punto.products && punto.products[producto] !== undefined) {
-    return Number(punto.products[producto]) || 0;
+  for (let i = 1; i <= SILO_COUNT; i++) {
+    const silo = point.silos[i] || point.silos[`silo${i}`];
+
+    if (!silo) continue;
+
+    const siloProduct = silo.product || productAssignments[i] || "DL-5";
+
+    if (siloProduct !== product) continue;
+
+    const tons = Number(silo.tons ?? silo.toneladas ?? 0);
+
+    total += tons;
   }
 
-  if (punto.totals && punto.totals[producto] !== undefined) {
-    return Number(punto.totals[producto]) || 0;
-  }
-
-  if (punto[producto] !== undefined) {
-    return Number(punto[producto]) || 0;
-  }
-
-  if (punto.silos) {
-    let total = 0;
-
-    for (let i = 1; i <= SILOS; i++) {
-      const silo = punto.silos[i] || punto.silos[`silo${i}`];
-      if (!silo) continue;
-
-      const prod = silo.product || silo.producto || productosSilos[i] || "DL-5";
-
-      if (prod !== producto) continue;
-
-      total += Number(silo.tons ?? silo.toneladas ?? silo.total ?? 0);
-    }
-
-    return total;
-  }
-
-  return 0;
+  return total;
 }
 
-/* ==========================================================
-   FECHAS GRÁFICOS
-   ========================================================== */
+function buildPointColors(values) {
+  return values.map((value, index) => {
+    if (index === 0) return "#000000";
 
-async function cargarFechasGraficos() {
-  const select = document.getElementById("chartDateSelect");
-  if (!select) return;
+    const previous = values[index - 1];
 
-  try {
-    const res = await fetch("/api/trend-dates");
+    if (value > previous) return "#27ae60";
+    if (value < previous) return "#e74c3c";
 
-    let fechas = [];
+    return "#000000";
+  });
+}
 
-    if (res.ok) {
-      const data = await res.json();
-      fechas = Array.isArray(data) ? data : (data.dates || []);
-    }
+function buildPointStyles(values) {
+  return values.map((value, index) => {
+    if (index === 0) return "circle";
 
-    if (!fechas.includes(fechaSeleccionada)) {
-      fechas.unshift(fechaSeleccionada);
-    }
+    const previous = values[index - 1];
 
-    select.innerHTML = "";
+    if (value > previous) return "triangle";
+    if (value < previous) return "rectRot";
 
-    fechas.forEach(fecha => {
-      const option = document.createElement("option");
-      option.value = fecha;
-      option.textContent = fecha;
-      select.appendChild(option);
-    });
+    return "circle";
+  });
+}
 
-    select.value = fechaSeleccionada;
-  } catch {
-    select.innerHTML = `<option value="${fechaSeleccionada}">${fechaSeleccionada}</option>`;
-  }
+function updateVisibleCharts() {
+  Object.keys(PRODUCTS).forEach(product => {
+    const safeId = normalizeProductId(product);
+    const wrapper = document.getElementById(`chart-wrapper-${safeId}`);
+
+    if (!wrapper) return;
+
+    const hasProduct = hasAnySiloWithProduct(product);
+
+    wrapper.style.display = hasProduct ? "" : "none";
+  });
 }
 
 /* ==========================================================
    VARIACIONES DIARIAS
    ========================================================== */
 
-function calcularVariacionesDiarias(historial) {
-  const variaciones = {
-    "DL-5": { positiva: 0, negativa: 0 },
-    "VE-03": { positiva: 0, negativa: 0 },
-    "ASE": { positiva: 0, negativa: 0 }
+function calculateDailyVariations(history) {
+  const variations = {
+    "DL-5": {
+      positive: 0,
+      negative: 0
+    },
+    "VE-03": {
+      positive: 0,
+      negative: 0
+    },
+    "ASE": {
+      positive: 0,
+      negative: 0
+    }
   };
 
-  if (!historial || historial.length < 2) return variaciones;
+  if (!history || history.length < 2) {
+    return variations;
+  }
 
-  Object.keys(PRODUCTOS).forEach(producto => {
-    for (let i = 1; i < historial.length; i++) {
-      const anterior = obtenerTotalProductoDesdePunto(historial[i - 1], producto);
-      const actual = obtenerTotalProductoDesdePunto(historial[i], producto);
-      const diff = actual - anterior;
+  const productSeries = {
+    "DL-5": [],
+    "VE-03": [],
+    "ASE": []
+  };
 
-      if (diff > 0) variaciones[producto].positiva += diff;
-      if (diff < 0) variaciones[producto].negativa += Math.abs(diff);
+  history.forEach(point => {
+    Object.keys(PRODUCTS).forEach(product => {
+      let value = 0;
+
+      if (point.products) {
+        value = Number(point.products[product] || 0);
+      } else if (point.totals) {
+        value = Number(point.totals[product] || 0);
+      } else if (point.silos) {
+        value = calculateProductTotalFromPoint(point, product);
+      }
+
+      productSeries[product].push(value);
+    });
+  });
+
+  Object.keys(PRODUCTS).forEach(product => {
+    const values = productSeries[product];
+
+    for (let i = 1; i < values.length; i++) {
+      const diff = values[i] - values[i - 1];
+
+      if (diff > 0) {
+        variations[product].positive += diff;
+      } else if (diff < 0) {
+        variations[product].negative += Math.abs(diff);
+      }
     }
   });
 
-  return variaciones;
+  return variations;
 }
 
 /* ==========================================================
    MODO DEMO
    ========================================================== */
 
-function iniciarDemo() {
-  detenerDemo();
-  generarDemo();
+function startDemoMode() {
+  stopDemoMode();
 
-  demoInterval = setInterval(generarDemo, 4000);
+  generateDemoData();
+
+  demoTimer = setInterval(() => {
+    generateDemoData();
+  }, 4000);
 }
 
-function detenerDemo() {
-  if (demoInterval) {
-    clearInterval(demoInterval);
-    demoInterval = null;
+function stopDemoMode() {
+  if (demoTimer) {
+    clearInterval(demoTimer);
+    demoTimer = null;
   }
 }
 
-function generarDemo() {
-  for (let i = 1; i <= SILOS; i++) {
-    const actual = estadoSilos[i]?.distance ?? random(1, 5);
-    estadoSilos[i] = {
-      distance: limitar(actual + random(-0.15, 0.15), 0.2, ALTURA_TOTAL)
+function generateDemoData() {
+  const demoSilos = {};
+
+  for (let i = 1; i <= SILO_COUNT; i++) {
+    const current = latestSilos[i] || {};
+    const currentDistance = Number(current.distance ?? randomBetween(0.8, 4.8));
+
+    const variation = randomBetween(-0.15, 0.15);
+    const distance = clamp(currentDistance + variation, 0.2, MAX_HEIGHT);
+
+    demoSilos[i] = {
+      distance
     };
   }
 
-  actualizarTodosLosSilos();
-  actualizarResumenActual();
-  actualizarEstadoMqtt(new Date(), true);
-}
+  latestSilos = demoSilos;
 
-/* ==========================================================
-   CÁLCULOS VOLUMEN / TON
-   ========================================================== */
+  updateSilos(latestSilos);
+  updateAllSummariesFromCurrentState();
+  updateMqttTime(new Date());
 
-function calcularNivel(distancia) {
-  if (!distancia || isNaN(distancia)) return 0;
+  const productTotals = calculateCurrentProductTotals();
 
-  return limitar(ALTURA_TOTAL - distancia, 0, ALTURA_TOTAL);
-}
+  const point = {
+    date: selectedDate,
+    time: getCurrentTime(),
+    products: productTotals
+  };
 
-function calcularVolumen(nivel) {
-  nivel = limitar(nivel, 0, ALTURA_TOTAL);
-
-  const volumenCono = VOLUMEN_TOTAL * (ALTURA_CONO / ALTURA_TOTAL);
-  const volumenCilindro = VOLUMEN_TOTAL - volumenCono;
-
-  if (nivel <= ALTURA_CONO) {
-    const r = nivel / ALTURA_CONO;
-    return volumenCono * Math.pow(r, 3);
+  if (!historicalByDate[selectedDate]) {
+    historicalByDate[selectedDate] = [];
   }
 
-  const nivelCilindro = nivel - ALTURA_CONO;
-  const r = nivelCilindro / ALTURA_CILINDRO;
+  historicalByDate[selectedDate].push(point);
 
-  return volumenCono + volumenCilindro * r;
-}
-
-function calcularToneladas(nivel, producto) {
-  const volumen = calcularVolumen(nivel);
-  const densidad = PRODUCTOS[producto]?.densidad || 1300;
-
-  return volumen * densidad / 1000;
-}
-
-/* ==========================================================
-   VISIBILIDAD PRODUCTOS
-   ========================================================== */
-
-function actualizarVisibilidadProductos() {
-  Object.keys(PRODUCTOS).forEach(producto => {
-    const visible = existeProductoAsignado(producto);
-
-    const card = document.getElementById(`summaryCard-${idProducto(producto)}`);
-    const chart = document.getElementById(`chartBox-${idProducto(producto)}`);
-
-    if (card) card.style.display = visible ? "" : "none";
-    if (chart) chart.style.display = visible ? "" : "none";
-  });
-}
-
-function existeProductoAsignado(producto) {
-  for (let i = 1; i <= SILOS; i++) {
-    if ((productosSilos[i] || "DL-5") === producto) return true;
-  }
-
-  return false;
+  renderChartsFromHistory(historicalByDate[selectedDate]);
+  updateSummariesFromHistory(historicalByDate[selectedDate]);
 }
 
 /* ==========================================================
    UTILIDADES
    ========================================================== */
 
-function inicializarProductos() {
-  for (let i = 1; i <= SILOS; i++) {
-    productosSilos[i] = i === 6 ? "ASE" : "DL-5";
+function hasAnySiloWithProduct(product) {
+  for (let i = 1; i <= SILO_COUNT; i++) {
+    if ((productAssignments[i] || "DL-5") === product) {
+      return true;
+    }
   }
+
+  return false;
 }
 
-function actualizarEstadoMqtt(fecha, conectado) {
-  const el = document.getElementById("mqttStatus");
+function updateMqttTime(value) {
+  const el = document.getElementById("mqttTime");
+
   if (!el) return;
 
-  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  const date = value instanceof Date ? value : new Date(value);
 
-  const hora = d.toLocaleTimeString("es-CL", {
+  el.textContent = `Última actualización MQTT: ${date.toLocaleTimeString("es-CL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  })}`;
+}
+
+function normalizeProductId(product) {
+  return product
+    .toLowerCase()
+    .replaceAll("-", "")
+    .replaceAll(" ", "");
+}
+
+function getTodayDate() {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentTime() {
+  const now = new Date();
+
+  return now.toLocaleTimeString("es-CL", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit"
   });
-
-  el.textContent = conectado
-    ? `🟢 Señal MQTT (${hora})`
-    : `🔴 Sin señal (--:--:--)`;
 }
 
-function idProducto(producto) {
-  return producto.toLowerCase().replaceAll("-", "").replaceAll(" ", "");
-}
-
-function fechaHoy() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-
-  return `${y}-${m}-${day}`;
-}
-
-function obtenerHora(timestamp) {
+function extractTime(timestamp) {
   if (!timestamp) return "";
 
-  const d = new Date(timestamp);
-  if (isNaN(d.getTime())) return "";
+  const date = new Date(timestamp);
 
-  return d.toLocaleTimeString("es-CL", {
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleTimeString("es-CL", {
     hour: "2-digit",
     minute: "2-digit"
   });
 }
 
-function colorSuave(hex) {
-  const limpio = hex.replace("#", "");
-  const r = parseInt(limpio.substring(0, 2), 16);
-  const g = parseInt(limpio.substring(2, 4), 16);
-  const b = parseInt(limpio.substring(4, 6), 16);
-
-  return `rgba(${r}, ${g}, ${b}, 0.18)`;
-}
-
-function coloresPuntos(valores) {
-  return valores.map((v, i) => {
-    if (i === 0) return "#000";
-
-    if (v > valores[i - 1]) return "#27ae60";
-    if (v < valores[i - 1]) return "#e74c3c";
-
-    return "#000";
-  });
-}
-
-function estilosPuntos(valores) {
-  return valores.map((v, i) => {
-    if (i === 0) return "circle";
-
-    if (v > valores[i - 1]) return "triangle";
-    if (v < valores[i - 1]) return "rectRot";
-
-    return "circle";
-  });
-}
-
-function setText(id, texto) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = texto;
-}
-
-function limitar(valor, min, max) {
-  return Math.max(min, Math.min(max, valor));
-}
-
-function random(min, max) {
+function randomBetween(min, max) {
   return Math.random() * (max - min) + min;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
