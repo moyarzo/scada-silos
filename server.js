@@ -10,7 +10,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// CONFIG
+// ===== CONFIG =====
+
 const CONE_HEIGHT = 1.67;
 const CYL_HEIGHT = 4.25;
 const MAX_HEIGHT = CONE_HEIGHT + CYL_HEIGHT;
@@ -48,12 +49,13 @@ const latestSilos = {
   tanque8: { levelMeters: 0, volume: 0, percent: 0 }
 };
 
-const TURN_FILE = path.join(__dirname, "turnData.json");
-const CONFIG_FILE = path.join(__dirname, "siloConfig.json");
-const HISTORY_FILE = path.join(__dirname, "historyData.json");
-const SILO_HISTORY_FILE = path.join(__dirname, "siloHistoryData.json");
-const TEMPLATE_FILE = path.join(__dirname, "template.xlsx");
-const EXPORTS_DIR = path.join(__dirname, "exports");
+const TURN_FILE          = path.join(__dirname, "turnData.json");
+const CONFIG_FILE        = path.join(__dirname, "siloConfig.json");
+const HISTORY_FILE       = path.join(__dirname, "historyData.json");
+const SILO_HISTORY_FILE  = path.join(__dirname, "siloHistoryData.json");
+const DAILY_SUMMARY_FILE = path.join(__dirname, "dailySummary.json");
+const TEMPLATE_FILE      = path.join(__dirname, "template.xlsx");
+const EXPORTS_DIR        = path.join(__dirname, "exports");
 
 if (!fs.existsSync(EXPORTS_DIR)) {
   fs.mkdirSync(EXPORTS_DIR, { recursive: true });
@@ -80,7 +82,7 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
-// ===== TIEMPO LOCAL VM =====
+// ===== TIEMPO LOCAL =====
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -109,7 +111,6 @@ function formatDateYYYYMMDD(dateObj) {
 function getDateKeyDaysAgo(daysAgo) {
   var date = new Date();
   date.setDate(date.getDate() - daysAgo);
-
   return (
     date.getFullYear() +
     "-" +
@@ -126,19 +127,15 @@ function getRounded5MinLabel() {
 }
 
 function getServerTime() {
-  return new Date().toLocaleTimeString("es-CL", {
-    hour12: false
-  });
+  return new Date().toLocaleTimeString("es-CL", { hour12: false });
 }
 
 function getLast30DateKeys() {
   var dates = [];
   var i;
-
   for (i = 29; i >= 0; i--) {
     dates.push(getDateKeyDaysAgo(i));
   }
-
   return dates;
 }
 
@@ -195,11 +192,7 @@ function getCurrentTotalsFromBackend() {
 // ===== HISTORIAL PRODUCTOS =====
 
 function getDefaultHistoryDay() {
-  return {
-    "DL-5": [],
-    "VE-03": [],
-    "ASE": []
-  };
+  return { "DL-5": [], "VE-03": [], "ASE": [] };
 }
 
 function getTodayHistory() {
@@ -230,14 +223,8 @@ function getMonthlyHistory() {
 
 function getDefaultSiloHistoryDay() {
   return {
-    tanque1: [],
-    tanque2: [],
-    tanque3: [],
-    tanque4: [],
-    tanque5: [],
-    tanque6: [],
-    tanque7: [],
-    tanque8: []
+    tanque1: [], tanque2: [], tanque3: [], tanque4: [],
+    tanque5: [], tanque6: [], tanque7: [], tanque8: []
   };
 }
 
@@ -251,7 +238,7 @@ function getSiloHistoryByDate(dateKey) {
   return allHistory[dateKey] || getDefaultSiloHistoryDay();
 }
 
-// ===== GUARDADO HISTÓRICO =====
+// ===== GUARDADO HISTÓRICO CADA 5 MIN =====
 
 function updatePersistentHistory() {
   var allHistory = readJson(HISTORY_FILE, {});
@@ -260,9 +247,7 @@ function updatePersistentHistory() {
   var label = getRounded5MinLabel();
   var totals = getCurrentTotalsFromBackend();
 
-  if (!allHistory[day]) {
-    allHistory[day] = getDefaultHistoryDay();
-  }
+  if (!allHistory[day]) allHistory[day] = getDefaultHistoryDay();
 
   Object.keys(totals).forEach(function (product) {
     var arr = allHistory[day][product] || [];
@@ -279,9 +264,7 @@ function updatePersistentHistory() {
     allHistory[day][product] = arr;
   });
 
-  if (!siloHistory[day]) {
-    siloHistory[day] = getDefaultSiloHistoryDay();
-  }
+  if (!siloHistory[day]) siloHistory[day] = getDefaultSiloHistoryDay();
 
   Object.keys(latestSilos).forEach(function (tanque) {
     var arr = siloHistory[day][tanque] || [];
@@ -302,15 +285,8 @@ function updatePersistentHistory() {
   writeJson(HISTORY_FILE, allHistory);
   writeJson(SILO_HISTORY_FILE, siloHistory);
 
-  io.emit("historyData", {
-    date: day,
-    history: getTodayHistory()
-  });
-
-  io.emit("siloTrendData", {
-    date: day,
-    history: getTodaySiloHistory()
-  });
+  io.emit("historyData",   { date: day, history: getTodayHistory() });
+  io.emit("siloTrendData", { date: day, history: getTodaySiloHistory() });
 }
 
 // ===== VARIACIONES DIARIAS =====
@@ -322,7 +298,7 @@ function calculateDailyVariations() {
   var variations = {
     "DL-5": { positive: 0, negative: 0 },
     "VE-03": { positive: 0, negative: 0 },
-    "ASE": { positive: 0, negative: 0 }
+    "ASE":  { positive: 0, negative: 0 }
   };
 
   Object.keys(variations).forEach(function (product) {
@@ -336,15 +312,9 @@ function calculateDailyVariations() {
     var last = arr.length > 0 ? Number(arr[arr.length - 1].value) : null;
 
     if (last == null || Number.isNaN(last)) {
-      arr.push({
-        time: getRounded5MinLabel(),
-        value: current
-      });
+      arr.push({ time: getRounded5MinLabel(), value: current });
     } else if (last !== current) {
-      arr.push({
-        time: getRounded5MinLabel(),
-        value: current
-      });
+      arr.push({ time: getRounded5MinLabel(), value: current });
     }
 
     for (var i = 1; i < arr.length; i++) {
@@ -366,77 +336,345 @@ function calculateDailyVariations() {
   return variations;
 }
 
-// ===== EXPORTACIÓN CONTINUA 30 DÍAS / 24H X 5 MIN =====
+/**
+ * Calcula variaciones de un día histórico a partir de su array de historial.
+ * No depende de datos en vivo.
+ */
+function calculateVariationsFromHistory(dayHistory) {
+  var variations = {
+    "DL-5": { positive: 0, negative: 0 },
+    "VE-03": { positive: 0, negative: 0 },
+    "ASE":  { positive: 0, negative: 0 }
+  };
 
-function getFullDay5MinLabels() {
-  var labels = [];
-  var h;
-  var m;
+  Object.keys(variations).forEach(function (product) {
+    var arr = (dayHistory[product] || []).slice();
 
-  for (h = 0; h < 24; h++) {
-    for (m = 0; m < 60; m += 5) {
-      labels.push(pad2(h) + ":" + pad2(m));
+    arr.sort(function (a, b) {
+      return String(a.time).localeCompare(String(b.time));
+    });
+
+    for (var i = 1; i < arr.length; i++) {
+      var prev = Number(arr[i - 1].value);
+      var curr = Number(arr[i].value);
+
+      if (Number.isNaN(prev) || Number.isNaN(curr)) continue;
+
+      var diff = curr - prev;
+
+      if (diff > 0) {
+        variations[product].positive += diff;
+      } else if (diff < 0) {
+        variations[product].negative += Math.abs(diff);
+      }
     }
-  }
+  });
 
-  return labels;
+  return variations;
 }
 
-function buildContinuousDaySeries(dayData, carryValues) {
-  var labels = getFullDay5MinLabels();
-  var result = [];
-  var map = { "DL-5": {}, "VE-03": {}, "ASE": {} };
+// ===== RESUMEN DIARIO (guardado a las 19:00) =====
 
-  Object.keys(dayData || {}).forEach(function (product) {
-    (dayData[product] || []).forEach(function (item) {
-      map[product][item.time] = Number(item.value);
-    });
+/**
+ * Obtiene el valor más cercano a una hora dada (ej: "07:00", "19:00")
+ * dentro de un array de historial { time, value }.
+ * Busca exacto primero, luego el más próximo en ventana de ±30 min.
+ */
+function getValueNearTime(historyArr, targetTime) {
+  if (!historyArr || historyArr.length === 0) return null;
+
+  // Buscar exacto
+  var exact = historyArr.find(function (item) {
+    return item.time === targetTime;
+  });
+  if (exact) return Number(exact.value);
+
+  // Convertir targetTime a minutos totales
+  var parts = targetTime.split(":");
+  var targetMinutes = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+
+  // Buscar el punto con menor diferencia en ventana de 30 min
+  var best = null;
+  var bestDiff = Infinity;
+
+  historyArr.forEach(function (item) {
+    var tp = item.time.split(":");
+    var itemMinutes = parseInt(tp[0], 10) * 60 + parseInt(tp[1], 10);
+    var diff = Math.abs(itemMinutes - targetMinutes);
+
+    if (diff <= 30 && diff < bestDiff) {
+      bestDiff = diff;
+      best = Number(item.value);
+    }
   });
 
-  labels.forEach(function (time) {
-    var row = { time: time, values: {} };
+  return best;
+}
 
-    ["DL-5", "VE-03", "ASE"].forEach(function (product) {
-      if (Object.prototype.hasOwnProperty.call(map[product], time)) {
-        carryValues[product] = map[product][time];
+/**
+ * Construye el objeto de resumen para un día dado.
+ * Puede recibir el historial directamente (para el día actual) o leerlo del archivo.
+ */
+function buildDaySummary(dateKey, dayHistory, turnDataForDay, variationsForDay) {
+  var summary = { date: dateKey };
+
+  ["DL-5", "VE-03", "ASE"].forEach(function (product) {
+    var arr = dayHistory[product] || [];
+
+    // Inicio y fin desde turnData si está disponible, si no desde historial
+    var inicio = null;
+    var fin    = null;
+
+    if (turnDataForDay && turnDataForDay.start && turnDataForDay.start[product] != null) {
+      inicio = Number(turnDataForDay.start[product]);
+    } else {
+      inicio = getValueNearTime(arr, "07:00");
+    }
+
+    if (turnDataForDay && turnDataForDay.end && turnDataForDay.end[product] != null) {
+      fin = Number(turnDataForDay.end[product]);
+    } else {
+      fin = getValueNearTime(arr, "19:00");
+    }
+
+    summary[product] = {
+      inicio:    inicio != null ? Number(inicio.toFixed(2)) : null,
+      fin:       fin    != null ? Number(fin.toFixed(2))    : null,
+      varPos:    Number((variationsForDay[product].positive).toFixed(2)),
+      varNeg:    Number((variationsForDay[product].negative).toFixed(2))
+    };
+  });
+
+  return summary;
+}
+
+/**
+ * Guarda el resumen del día actual en dailySummary.json.
+ * Se llama automáticamente a las 19:00 y también puede llamarse manualmente.
+ */
+function saveDailySummary() {
+  var dayKey     = today();
+  var dayHistory = getTodayHistory();
+  var turnAll    = readJson(TURN_FILE, {});
+  var turnDay    = turnAll[dayKey] || {};
+  var variations = calculateVariationsFromHistory(dayHistory);
+
+  var summary    = buildDaySummary(dayKey, dayHistory, turnDay, variations);
+
+  var allSummaries = readJson(DAILY_SUMMARY_FILE, {});
+  allSummaries[dayKey] = summary;
+  writeJson(DAILY_SUMMARY_FILE, allSummaries);
+
+  console.log("Resumen diario guardado para:", dayKey);
+  return summary;
+}
+
+/**
+ * Retorna los resúmenes de los últimos 30 días.
+ * Si un día no tiene resumen guardado en dailySummary.json,
+ * lo reconstruye on-the-fly desde historyData.json.
+ */
+function getLast30DailySummaries() {
+  var allSummaries = readJson(DAILY_SUMMARY_FILE, {});
+  var allHistory   = readJson(HISTORY_FILE, {});
+  var turnAll      = readJson(TURN_FILE, {});
+  var result       = [];
+
+  var i;
+  for (i = 29; i >= 0; i--) {
+    var dateKey = getDateKeyDaysAgo(i);
+
+    if (allSummaries[dateKey]) {
+      result.push(allSummaries[dateKey]);
+    } else {
+      // Reconstruir desde historial si existe
+      var dayHistory = allHistory[dateKey];
+      if (dayHistory) {
+        var turnDay    = turnAll[dateKey] || {};
+        var variations = calculateVariationsFromHistory(dayHistory);
+        var summary    = buildDaySummary(dateKey, dayHistory, turnDay, variations);
+        result.push(summary);
       }
-
-      row.values[product] = carryValues[product];
-    });
-
-    result.push(row);
-  });
+      // Si no hay historial para ese día, simplemente se omite
+    }
+  }
 
   return result;
 }
 
-function buildTrendCsv() {
-  var monthly = getMonthlyHistory();
-  var dayKeys = Object.keys(monthly).sort();
-  var csv = "Fecha,Hora,DL-5,VE-03,ASE\n";
-  var carryValues = {
-    "DL-5": 0,
-    "VE-03": 0,
-    "ASE": 0
-  };
+// ===== EXPORTACIÓN CSV RESUMEN DIARIO =====
 
-  dayKeys.forEach(function (dayKey) {
-    var dayData = monthly[dayKey] || getDefaultHistoryDay();
-    var rows = buildContinuousDaySeries(dayData, carryValues);
+/**
+ * Genera el CSV con una fila por día y columnas:
+ * Fecha,
+ * DL-5_Inicio(ton), DL-5_Fin(ton), DL-5_VarPos(ton), DL-5_VarNeg(ton),
+ * VE-03_Inicio(ton), VE-03_Fin(ton), VE-03_VarPos(ton), VE-03_VarNeg(ton),
+ * ASE_Inicio(ton),  ASE_Fin(ton),  ASE_VarPos(ton),  ASE_VarNeg(ton)
+ */
+function buildDailySummaryCsv() {
+  var summaries = getLast30DailySummaries();
 
-    rows.forEach(function (row) {
-      csv += [
-        dayKey,
-        row.time,
-        Number(row.values["DL-5"]).toFixed(2),
-        Number(row.values["VE-03"]).toFixed(2),
-        Number(row.values["ASE"]).toFixed(2)
-      ].join(",") + "\n";
-    });
+  var header = [
+    "Fecha",
+    "DL-5 Inicio 07h (ton)", "DL-5 Fin 19h (ton)", "DL-5 Var.Positiva (ton)", "DL-5 Var.Negativa (ton)",
+    "VE-03 Inicio 07h (ton)", "VE-03 Fin 19h (ton)", "VE-03 Var.Positiva (ton)", "VE-03 Var.Negativa (ton)",
+    "ASE Inicio 07h (ton)", "ASE Fin 19h (ton)", "ASE Var.Positiva (ton)", "ASE Var.Negativa (ton)"
+  ].join(",");
+
+  var rows = summaries.map(function (s) {
+    function val(product, field) {
+      if (!s[product]) return "";
+      var v = s[product][field];
+      return v != null ? v : "";
+    }
+
+    return [
+      s.date,
+      val("DL-5",  "inicio"), val("DL-5",  "fin"), val("DL-5",  "varPos"), val("DL-5",  "varNeg"),
+      val("VE-03", "inicio"), val("VE-03", "fin"), val("VE-03", "varPos"), val("VE-03", "varNeg"),
+      val("ASE",   "inicio"), val("ASE",   "fin"), val("ASE",   "varPos"), val("ASE",   "varNeg")
+    ].join(",");
   });
 
-  return csv;
+  return header + "\n" + rows.join("\n");
 }
+
+// ===== EXCEL DIARIO =====
+
+async function buildExportExcel() {
+  if (!fs.existsSync(TEMPLATE_FILE)) {
+    throw new Error("No se encontró template.xlsx en la carpeta del proyecto");
+  }
+
+  var workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(TEMPLATE_FILE);
+
+  var sheet = workbook.getWorksheet("Hoja1");
+
+  if (!sheet) {
+    throw new Error('No se encontró la hoja "Hoja1" en template.xlsx');
+  }
+
+  var totals = getCurrentTotalsFromBackend();
+  var turn = getTodayTurnData();
+  var variations = calculateDailyVariations();
+  var siloProducts = getSiloProducts();
+
+  var i, row, tanque, product, volume, massTon;
+
+  sheet.getCell("C4").value = Number(totals["DL-5"].toFixed(1));
+  sheet.getCell("D4").value = Number(totals["ASE"].toFixed(1));
+  sheet.getCell("E4").value = Number(totals["VE-03"].toFixed(1));
+
+  sheet.getCell("C9").value = turn.start && turn.start["DL-5"] != null
+    ? Number(turn.start["DL-5"].toFixed(1)) : "";
+  sheet.getCell("D9").value = turn.start && turn.start["ASE"] != null
+    ? Number(turn.start["ASE"].toFixed(1)) : "";
+  sheet.getCell("E9").value = turn.start && turn.start["VE-03"] != null
+    ? Number(turn.start["VE-03"].toFixed(1)) : "";
+
+  sheet.getCell("C10").value = turn.end && turn.end["DL-5"] != null
+    ? Number(turn.end["DL-5"].toFixed(1)) : "";
+  sheet.getCell("D10").value = turn.end && turn.end["ASE"] != null
+    ? Number(turn.end["ASE"].toFixed(1)) : "";
+  sheet.getCell("E10").value = turn.end && turn.end["VE-03"] != null
+    ? Number(turn.end["VE-03"].toFixed(1)) : "";
+
+  sheet.getCell("C11").value = Number(variations["DL-5"].positive.toFixed(1));
+  sheet.getCell("D11").value = Number(variations["ASE"].positive.toFixed(1));
+  sheet.getCell("E11").value = Number(variations["VE-03"].positive.toFixed(1));
+
+  sheet.getCell("C12").value = Number(variations["DL-5"].negative.toFixed(1));
+  sheet.getCell("D12").value = Number(variations["ASE"].negative.toFixed(1));
+  sheet.getCell("E12").value = Number(variations["VE-03"].negative.toFixed(1));
+
+  for (i = 1; i <= 8; i++) {
+    row = 16 + i;
+    tanque = "tanque" + i;
+    product = siloProducts[tanque];
+    volume = latestSilos[tanque] ? latestSilos[tanque].volume || 0 : 0;
+    massTon = (volume * PRODUCTS[product].density) / 1000;
+
+    sheet.getCell("C" + row).value = product;
+    sheet.getCell("D" + row).value = Number(massTon.toFixed(2));
+  }
+
+  var fileName = "stock_diario_" + formatDateYYYYMMDD() + ".xlsx";
+  var filePath = path.join(EXPORTS_DIR, fileName);
+
+  await workbook.xlsx.writeFile(filePath);
+
+  return { fileName: fileName, filePath: filePath };
+}
+
+// ===== MQTT =====
+
+function uint32ToFloatWordSwap(uintValue) {
+  var buffer = Buffer.allocUnsafe(4);
+  buffer.writeUInt32BE(uintValue >>> 0, 0);
+
+  var swapped = Buffer.from([buffer[2], buffer[3], buffer[0], buffer[1]]);
+  return swapped.readFloatBE(0);
+}
+
+function extractDeltaRawValue(payload) {
+  var key;
+  if (!payload || !payload.d) return null;
+
+  for (key in payload.d) {
+    if (key !== "type") return payload.d[key];
+  }
+  return null;
+}
+
+var client = mqtt.connect("mqtt://localhost:1883");
+
+client.on("connect", function () {
+  console.log("MQTT conectado");
+  client.subscribe("planta/losbronces/silos/#");
+});
+
+client.on("message", function (topic, message) {
+  try {
+    var parts = topic.split("/");
+    var tanque = parts[parts.length - 1];
+    var payload, rawValue, rawUint32, sensorDistance, level, volume, percent;
+
+    if (!latestSilos[tanque]) return;
+
+    payload  = JSON.parse(message.toString());
+    rawValue = extractDeltaRawValue(payload);
+    if (rawValue == null) return;
+
+    rawUint32 = parseInt(rawValue, 10);
+    if (Number.isNaN(rawUint32)) return;
+
+    sensorDistance = uint32ToFloatWordSwap(rawUint32);
+    if (Number.isNaN(sensorDistance) || !Number.isFinite(sensorDistance)) return;
+
+    sensorDistance = sensorDistance * 0.98;
+    sensorDistance = Math.max(0, Math.min(MAX_HEIGHT, sensorDistance));
+
+    level   = MAX_HEIGHT - sensorDistance;
+    level   = Math.max(0, Math.min(MAX_HEIGHT, level));
+    volume  = calculateVolume(level);
+    percent = (level / MAX_HEIGHT) * 100;
+
+    latestSilos[tanque] = { levelMeters: level, volume: volume, percent: percent };
+
+    io.emit("nivel",     { tanque: tanque, nivel: String(sensorDistance), serverTime: getServerTime() });
+    io.emit("siloState", latestSilos);
+
+    console.log(
+      "MQTT recibido:", tanque,
+      "distance_m=" + sensorDistance.toFixed(3),
+      "level_m=" + level.toFixed(3),
+      "percent=" + percent.toFixed(2)
+    );
+  } catch (error) {
+    console.error("Error procesando MQTT:", error, message.toString());
+  }
+});
 
 // ===== TURNOS =====
 
@@ -465,211 +703,39 @@ function getTodayTurnData() {
   return data[today()] || {};
 }
 
-// ===== EXCEL =====
+// ===== TAREA: GUARDADO AUTOMÁTICO DEL RESUMEN DIARIO A LAS 19:00 =====
 
-async function buildExportExcel() {
-  if (!fs.existsSync(TEMPLATE_FILE)) {
-    throw new Error("No se encontró template.xlsx en la carpeta del proyecto");
-  }
+var dailySummarySavedToday = false;
 
-  var workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(TEMPLATE_FILE);
+function checkDailySummaryTrigger() {
+  var now = new Date();
+  var h   = now.getHours();
+  var m   = now.getMinutes();
+  var d   = today();
 
-  var sheet = workbook.getWorksheet("Hoja1");
-
-  if (!sheet) {
-    throw new Error('No se encontró la hoja "Hoja1" en template.xlsx');
-  }
-
-  var totals = getCurrentTotalsFromBackend();
-  var turn = getTodayTurnData();
-  var variations = calculateDailyVariations();
-  var siloProducts = getSiloProducts();
-
-  var i;
-  var row;
-  var tanque;
-  var product;
-  var volume;
-  var massTon;
-
-  // Totalizadores
-  sheet.getCell("C4").value = Number(totals["DL-5"].toFixed(1));
-  sheet.getCell("D4").value = Number(totals["ASE"].toFixed(1));
-  sheet.getCell("E4").value = Number(totals["VE-03"].toFixed(1));
-
-  // Registro turno inicial
-  sheet.getCell("C9").value =
-    turn.start && turn.start["DL-5"] != null
-      ? Number(turn.start["DL-5"].toFixed(1))
-      : "";
-
-  sheet.getCell("D9").value =
-    turn.start && turn.start["ASE"] != null
-      ? Number(turn.start["ASE"].toFixed(1))
-      : "";
-
-  sheet.getCell("E9").value =
-    turn.start && turn.start["VE-03"] != null
-      ? Number(turn.start["VE-03"].toFixed(1))
-      : "";
-
-  // Registro turno final
-  sheet.getCell("C10").value =
-    turn.end && turn.end["DL-5"] != null
-      ? Number(turn.end["DL-5"].toFixed(1))
-      : "";
-
-  sheet.getCell("D10").value =
-    turn.end && turn.end["ASE"] != null
-      ? Number(turn.end["ASE"].toFixed(1))
-      : "";
-
-  sheet.getCell("E10").value =
-    turn.end && turn.end["VE-03"] != null
-      ? Number(turn.end["VE-03"].toFixed(1))
-      : "";
-
-  // Variación positiva
-  sheet.getCell("C11").value = Number(variations["DL-5"].positive.toFixed(1));
-  sheet.getCell("D11").value = Number(variations["ASE"].positive.toFixed(1));
-  sheet.getCell("E11").value = Number(variations["VE-03"].positive.toFixed(1));
-
-  // Variación negativa
-  sheet.getCell("C12").value = Number(variations["DL-5"].negative.toFixed(1));
-  sheet.getCell("D12").value = Number(variations["ASE"].negative.toFixed(1));
-  sheet.getCell("E12").value = Number(variations["VE-03"].negative.toFixed(1));
-
-  // Toneladas por silo
-  for (i = 1; i <= 8; i++) {
-    row = 16 + i; // Silo 1 = fila 17, Silo 8 = fila 24
-    tanque = "tanque" + i;
-    product = siloProducts[tanque];
-    volume = latestSilos[tanque] ? latestSilos[tanque].volume || 0 : 0;
-    massTon = (volume * PRODUCTS[product].density) / 1000;
-  
-    sheet.getCell("C" + row).value = product;
-    sheet.getCell("D" + row).value = Number(massTon.toFixed(2));
-  }
-
-  var fileName = "stock_diario_" + formatDateYYYYMMDD() + ".xlsx";
-  var filePath = path.join(EXPORTS_DIR, fileName);
-
-  await workbook.xlsx.writeFile(filePath);
-
-  return { fileName: fileName, filePath: filePath };
-}
-
-// ===== MQTT DELTA HMI =====
-
-function uint32ToFloatWordSwap(uintValue) {
-  var buffer = Buffer.allocUnsafe(4);
-
-  buffer.writeUInt32BE(uintValue >>> 0, 0);
-
-  var swapped = Buffer.from([
-    buffer[2],
-    buffer[3],
-    buffer[0],
-    buffer[1]
-  ]);
-
-  return swapped.readFloatBE(0);
-}
-
-function extractDeltaRawValue(payload) {
-  var key;
-
-  if (!payload || !payload.d) return null;
-
-  for (key in payload.d) {
-    if (key !== "type") {
-      return payload.d[key];
+  // Guardar entre las 19:00 y las 19:05 (ventana de 5 min para no depender del tick exacto)
+  // Solo una vez por día
+  if (h === 19 && m < 5) {
+    if (!dailySummarySavedToday) {
+      saveDailySummary();
+      dailySummarySavedToday = true;
+      console.log("Resumen diario guardado automáticamente para:", d);
+    }
+  } else {
+    // Resetear la bandera al comenzar un nuevo día (fuera de la ventana de 19:00)
+    if (h !== 19 || m >= 5) {
+      dailySummarySavedToday = false;
     }
   }
-
-  return null;
 }
 
-var client = mqtt.connect("mqtt://localhost:1883");
-
-client.on("connect", function () {
-  console.log("MQTT conectado");
-  client.subscribe("planta/losbronces/silos/#");
-});
-
-client.on("message", function (topic, message) {
-  try {
-    var parts = topic.split("/");
-    var tanque = parts[parts.length - 1];
-    var payload;
-    var rawValue;
-    var rawUint32;
-    var sensorDistance;
-    var level;
-    var volume;
-    var percent;
-
-    if (!latestSilos[tanque]) return;
-
-    payload = JSON.parse(message.toString());
-    rawValue = extractDeltaRawValue(payload);
-
-    if (rawValue == null) return;
-
-    rawUint32 = parseInt(rawValue, 10);
-    if (Number.isNaN(rawUint32)) return;
-
-    sensorDistance = uint32ToFloatWordSwap(rawUint32);
-
-    if (Number.isNaN(sensorDistance)) return;
-    if (!Number.isFinite(sensorDistance)) return;
-
-    // Ajuste fino solicitado
-    sensorDistance = sensorDistance * 0.98;
-
-    // Radar montado arriba:
-    // 0 = lleno, MAX_HEIGHT = vacío
-    sensorDistance = Math.max(0, Math.min(MAX_HEIGHT, sensorDistance));
-
-    level = MAX_HEIGHT - sensorDistance;
-    level = Math.max(0, Math.min(MAX_HEIGHT, level));
-
-    volume = calculateVolume(level);
-    percent = (level / MAX_HEIGHT) * 100;
-
-    latestSilos[tanque] = {
-      levelMeters: level,
-      volume: volume,
-      percent: percent
-    };
-
-    io.emit("nivel", {
-      tanque: tanque,
-      nivel: String(sensorDistance),
-      serverTime: getServerTime()
-    });
-
-    io.emit("siloState", latestSilos);
-
-    console.log(
-      "MQTT recibido:",
-      tanque,
-      "distance_m=" + sensorDistance.toFixed(3),
-      "level_m=" + level.toFixed(3),
-      "percent=" + percent.toFixed(2)
-    );
-  } catch (error) {
-    console.error("Error procesando MQTT:", error, message.toString());
-  }
-});
-
-// ===== TAREAS =====
+// ===== INTERVALOS =====
 
 setInterval(checkShift, 60000);
 setInterval(updatePersistentHistory, 60000);
+setInterval(checkDailySummaryTrigger, 60000);   // revisa cada minuto si son las 19:00
 
-// ===== RUTAS =====
+// ===== RUTAS HTTP =====
 
 app.get("/export-data", async function (req, res) {
   try {
@@ -681,25 +747,34 @@ app.get("/export-data", async function (req, res) {
   }
 });
 
-app.get("/export-trend", function (req, res) {
+/**
+ * Nueva ruta: descarga el CSV de resumen diario (últimos 30 días).
+ * Reemplaza a /export-trend.
+ */
+app.get("/export-daily-summary", function (req, res) {
   try {
-    var csv = buildTrendCsv();
-    var fileName = "tendencia_30_dias_" + formatDateYYYYMMDD() + ".csv";
+    var csv      = buildDailySummaryCsv();
+    var fileName = "resumen_diario_" + formatDateYYYYMMDD() + ".csv";
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=" + fileName);
     return res.send(csv);
   } catch (error) {
-    console.error("Error generando CSV:", error);
+    console.error("Error generando CSV resumen diario:", error);
     return res.status(500).send("No fue posible generar el archivo CSV");
   }
+});
+
+// Ruta legacy mantenida por compatibilidad (redirige a la nueva)
+app.get("/export-trend", function (req, res) {
+  return res.redirect("/export-daily-summary");
 });
 
 // ===== SOCKET =====
 
 io.on("connection", function (socket) {
   socket.on("getTurnData", function (payload) {
-    var data = readJson(TURN_FILE, {});
+    var data    = readJson(TURN_FILE, {});
     var dateKey = payload && payload.date ? payload.date : today();
 
     socket.emit("turnData", {
@@ -714,7 +789,6 @@ io.on("connection", function (socket) {
 
   socket.on("setSiloProduct", function (payload) {
     if (!payload) return;
-
     setSiloProduct(payload.tanque, payload.product);
     io.emit("siloConfig", getSiloProducts());
   });
@@ -725,18 +799,16 @@ io.on("connection", function (socket) {
 
   socket.on("getHistoryData", function (payload) {
     var dateKey = payload && payload.date ? payload.date : today();
-
     socket.emit("historyData", {
-      date: dateKey,
+      date:    dateKey,
       history: getProductHistoryByDate(dateKey)
     });
   });
 
   socket.on("getSiloTrendData", function (payload) {
     var dateKey = payload && payload.date ? payload.date : today();
-
     socket.emit("siloTrendData", {
-      date: dateKey,
+      date:    dateKey,
       history: getSiloHistoryByDate(dateKey)
     });
   });
@@ -749,5 +821,5 @@ io.on("connection", function (socket) {
 app.use(express.static(__dirname));
 
 server.listen(3000, "0.0.0.0", function () {
-  console.log("Servidor 3000");
+  console.log("Servidor corriendo en puerto 3000");
 });
