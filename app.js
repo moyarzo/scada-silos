@@ -639,7 +639,7 @@ function exportData() {
 }
 
 function exportTrend() {
-  window.location.href = "/export-trend";
+  window.location.href = "/export-daily-summary";
 }
 
 // ===== RENDER PRINCIPAL =====
