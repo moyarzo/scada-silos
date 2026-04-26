@@ -931,7 +931,17 @@ document.querySelectorAll('input[name="mode"]').forEach(function (radio) {
 document.getElementById("exportBtn").addEventListener("click", exportData);
 document.getElementById("exportTrendBtn").addEventListener("click", exportTrend);
 
+// DESPUÉS
+let lastKnownWidth = window.innerWidth;
+
 window.addEventListener("resize", function () {
+  const currentWidth = window.innerWidth;
+
+  // Ignorar si solo cambió la altura (scroll en móvil oculta/muestra barra URL)
+  if (currentWidth === lastKnownWidth) return;
+
+  lastKnownWidth = currentWidth;
+
   renderTopPanel();
   initCharts();
   updateCharts();
