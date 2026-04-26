@@ -754,7 +754,7 @@ app.get("/export-data", async function (req, res) {
 app.get("/export-daily-summary", function (req, res) {
   try {
     var csv      = buildDailySummaryCsv();
-    var fileName = "resumen_diario_" + formatDateYYYYMMDD() + ".csv";
+    var fileName = "historial_" + formatDateYYYYMMDD() + ".csv";
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=" + fileName);
